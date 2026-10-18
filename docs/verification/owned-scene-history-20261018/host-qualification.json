@@ -1,0 +1,33 @@
+{
+  "result": "NOT_QUALIFIED_NO_PROMOTION",
+  "first": {
+    "elapsed_seconds": 4.969034,
+    "native_renders": 265,
+    "prepared_scenes": 265,
+    "published_frames": 286,
+    "audio_queue_empty_events": 10,
+    "timing_errors": 0,
+    "original_frame_mismatches": 0
+  },
+  "unchanged_control": {
+    "elapsed_seconds": 4.971864,
+    "native_renders": 280,
+    "prepared_scenes": 280,
+    "published_frames": 286,
+    "audio_queue_empty_events": 19,
+    "timing_errors": 0,
+    "original_frame_mismatches": 0
+  },
+  "second": {
+    "elapsed_seconds": 6.788508,
+    "native_renders": 282,
+    "prepared_scenes": 282,
+    "published_frames": 286,
+    "audio_queue_empty_events": 52,
+    "timing_errors": 0,
+    "original_frame_mismatches": 0
+  },
+  "fast_600_audio_and_4k_parity_passed": true,
+  "complete_host7_passed": false,
+  "note": "First candidate render-count gate failed; second elapsed-time gate failed. Unchanged control also has audio underruns. No further pacing retries or causal claim."
+}

@@ -45,4 +45,13 @@ NFPC_API int nf_pc_scene_retention_info(const NFPCScene*,unsigned owner,unsigned
 NFPC_API int nf_pc_scene_retention_buffer(const NFPCScene*,unsigned owner,unsigned kind,unsigned buffer,const void**,size_t*);
 NFPC_API int nf_pc_scene_hud_info(const NFPCScene*,uint64_t out[5]);
 NFPC_API int nf_pc_scene_hud_buffer(const NFPCScene*,unsigned,const void**,size_t*);
+/* Explicit opt-in motion scene with owned original history-event ordinal grids.
+   Adds307200 bytes per road/wall layer per owner to the SAME total scene budget.
+   Original endpoint commands/materials/coverage are preserved. No core/provider
+   callback is retained. Does NOT retain history roots/materials or enable motion.
+   Existing prepare/prepare_motion behavior and allocation remain unchanged. */
+NFPC_API NFPCScene* nf_pc_scene_prepare_motion_ordinals(const NFPCSourceFrame*,size_t);
+/* Immutable38400-u64 grid until scene free. Zero outside proof kind/owner rows.
+   Invalid/default-scene getters leave outputs unchanged. */
+NFPC_API int nf_pc_scene_retention_ordinals(const NFPCScene*,unsigned owner,unsigned kind,const uint64_t**,size_t*);
 #endif

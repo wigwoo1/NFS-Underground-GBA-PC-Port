@@ -1,0 +1,52 @@
+{
+  "result": "PASS_OWNED_SCENE_EVENT_ORDINALS",
+  "counts": {
+    "scenes": 590,
+    "split_scenes": 112,
+    "owned_grids": 1404,
+    "cell_slots": 53913600,
+    "default_rejections": 1404,
+    "retained_buffer_parity": 4212,
+    "background_palette_parity": 1180,
+    "command_parity": 69,
+    "invalid_getter_guards": 9,
+    "post_core_thread_reads": 6,
+    "gpu_endpoint_comparisons": 6,
+    "gpu_endpoint_pixels": 25631673
+  },
+  "budget_cases": [
+    {
+      "index": 18,
+      "bytes": 9249480,
+      "owners": 1,
+      "split": 0
+    },
+    {
+      "index": 99,
+      "bytes": 13504180,
+      "owners": 1,
+      "split": 0
+    },
+    {
+      "index": 299,
+      "bytes": 8656132,
+      "owners": 1,
+      "split": 0
+    }
+  ],
+  "build_sha256": "0bda3dbb9111f988b73d70a4ffb67be01011719c088f9c27c576503137dd1dc2",
+  "dll_sha256": "cc7882e06d8ef286a753e9e8496b6147e03eec7fc5f5f23f8dae49886c04b910",
+  "core_sha256": "2ca44341244acd5dbeb9aa2c74567143809d31841ca1a06467923696ca1307fb",
+  "test_sha256": "0da0b4b17051bcb9c6ee53210e2948095855659277b71cda9d0f1e60f221d270",
+  "pcm_frames": 443007,
+  "pcm_sha256": "eedce61302b062d825e9a26fa1d8399f0a7c29eaf4319e33a3d71eedd40be33e",
+  "original_frames_sha256": "e65fcf05ca1e561d52fb8712440047413bb5b65de5d1b92d547a1153721b7b5c",
+  "protected_sha256": {
+    "C:/NFSUG-Workspace/Need for Speed - Underground (USA, Europe) (En,Fr,De,It).gba": "53817aec76a623dc2c7782ddf841f89f369aebe5a92a28c9afc69feaf914a593",
+    "C:/NFSUG-Workspace/NFSUG-Native-PC-Port\\work\\integration-0.state": "49e85564032a383626709b183f37aff34601c6e97cabdfcb17c117f72d996104"
+  },
+  "lifetime_after_source_and_core_free": true,
+  "live_scheduling": false,
+  "complete_history_root_materials": false,
+  "full_scene_60fps": false
+}

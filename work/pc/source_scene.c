@@ -19,7 +19,7 @@ static NFPCScene* prepare_scene(const NFPCSourceFrame*frame,size_t maximum,int m
  if(!nf_pc_source_background_rgba(frame,s->background,sizeof(s->background))||!nf_pc_source_palette_rgba(frame,s->palette,sizeof(s->palette)))goto fail;
  s->hud=nf_pc_source_hud(frame,maximum-s->info[6]);uint64_t hi[5];if(!s->hud||!nf_pc_hud_info(s->hud,hi)||hi[0]!=f[0]||hi[1]!=f[1]||!retain(s,(size_t)hi[4],maximum))goto fail;
  for(unsigned owner=0;owner<f[4];owner++){if(!nf_pc_source_frame_owner(frame,owner,s->owner[owner])||s->owner[owner][0]!=f[0])goto fail;
- for(unsigned layer=0;layer<2;layer++){uint64_t ri[10];s->retained[owner][layer]=nf_pc_source_retention(frame,owner,NFPC_ROAD+layer,maximum-s->info[6]);if(!s->retained[owner][layer]||!nf_pc_retention_info(s->retained[owner][layer],ri)||memcmp(ri,s->owner[owner],5*sizeof(uint64_t))||!retain(s,(size_t)ri[9],maximum))goto fail;
+ for(unsigned layer=0;layer<2;layer++){uint64_t ri[10];s->retained[owner][layer]=(motion==2?nf_pc_source_retention_ordinals:nf_pc_source_retention)(frame,owner,NFPC_ROAD+layer,maximum-s->info[6]);if(!s->retained[owner][layer]||!nf_pc_retention_info(s->retained[owner][layer],ri)||memcmp(ri,s->owner[owner],5*sizeof(uint64_t))||!retain(s,(size_t)ri[9],maximum))goto fail;
  const void*records;size_t rn;if(!nf_pc_retention_buffer(s->retained[owner][layer],1,&records,&rn)||rn!=ri[8]*16)goto fail;size_t bytes=(size_t)ri[8]*6*4*sizeof(float);s->retention_vertex_bytes[owner][layer]=bytes;if(bytes){if(!retain(s,bytes,maximum)||(s->retention_vertices[owner][layer]=malloc(bytes))==NULL)goto fail;static const unsigned corner[12]={0,0,1,0,0,1,0,1,1,0,1,1};float*v=s->retention_vertices[owner][layer];const uint32_t*r=records;for(size_t cell=0;cell<ri[8];cell++){unsigned x=r[cell*4]%240,y=r[cell*4]/240;float u=((float)x+.5f)/240.0f,t=((float)y+.5f)/160.0f;for(unsigned j=0;j<6;j++){size_t at=(cell*6+j)*4;v[at]=(float)(x+corner[j*2]);v[at+1]=(float)(y+corner[j*2+1]);v[at+2]=u;v[at+3]=t;}}}
  }
  NFPCWorld*w=nf_pc_source_world(frame,owner,64u*1024*1024);if(!w)goto fail;uint64_t wi[4];int valid=0;if(!nf_pc_world_info(w,wi))goto owner_done;
@@ -60,3 +60,6 @@ int nf_pc_scene_motion_model(const NFPCScene*s,unsigned i,const void**p,size_t*n
 int nf_pc_scene_motion_sky(const NFPCScene*s,unsigned owner,const void**p,size_t*n){if(!s||owner>=s->info[2]||!s->motion_sky[owner]||!p||!n)return 0;*p=s->motion_sky[owner];*n=30568;return 1;}
 
 int nf_pc_scene_motion_timing(const NFPCScene*s,unsigned owner,const void**p,size_t*n){if(!s||owner>=s->info[2]||!s->motion_timing[owner]||!p||!n)return 0;*p=s->motion_timing[owner];*n=184;return 1;}
+
+NFPCScene* nf_pc_scene_prepare_motion_ordinals(const NFPCSourceFrame*f,size_t maximum){return prepare_scene(f,maximum,2);}
+int nf_pc_scene_retention_ordinals(const NFPCScene*s,unsigned owner,unsigned kind,const uint64_t**p,size_t*n){if(!s||owner>=s->info[2]||(kind!=NFPC_ROAD&&kind!=NFPC_WALL))return 0;return nf_pc_retention_ordinals(s->retained[owner][kind-NFPC_ROAD],p,n);}

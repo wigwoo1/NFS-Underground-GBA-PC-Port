@@ -1,0 +1,23 @@
+{
+  "result": "VERIFIED_SCENE_COMPONENT_NOT_LIVE_PACING",
+  "archive_sha256": "d4444ec71dd4fb1916a46c9f48b501f9321819faba6f538f8858a1feb760392a",
+  "archive_members": 184,
+  "source_after_sha256": {
+    "source_retention.c": "fa32ca69506e304e49a6e123dfc4ad3d232eb94f17b49bab7ac71a2f0d264691",
+    "source_retention.h": "685586f5de4eba8ea40d9b0ec48a7d6a5898e7059ce32412a1ae77bc3684bb98",
+    "source_scene.c": "a168e7d0c9e827f4fefd45622475d146d014d01f8921019a7d6e7097045de01e",
+    "source_scene.h": "018dc8505a3510aa23fc6685b3380a5ced862adf8a109adf13ba71961de9c643"
+  },
+  "protected_sha256": {
+    "C:/NFSUG-Workspace/Need for Speed - Underground (USA, Europe) (En,Fr,De,It).gba": "53817aec76a623dc2c7782ddf841f89f369aebe5a92a28c9afc69feaf914a593",
+    "C:/NFSUG-Workspace/NFSUG-Native-PC-Port\\work\\integration-0.state": "49e85564032a383626709b183f37aff34601c6e97cabdfcb17c117f72d996104",
+    "C:/NFSUG-Workspace/NFSUG-Native-PC-Port\\tryout\\NFSUG-Presentation-Test-20261017-ba85daea-cf66b6ed\\NFSUG-Source-Native-Preview.exe": "ba85daea834c50e6f405a985207fa09c8f87c034650d46dfc02dcbd70446466b",
+    "C:/NFSUG-Workspace/NFSUG-Native-PC-Port\\tryout\\NFSUG-Presentation-Test-20261017-ba85daea-cf66b6ed\\capture-host.dll": "cf66b6edbd86d8cd1261cf59a4e529f9aac821ffe442e4f01dd46de8bfb83f44"
+  },
+  "canonical_status_saved": true,
+  "offered_preview_changed": false,
+  "full_scene_60fps": false,
+  "free_c_bytes": 46561202176,
+  "checkpoint_note": "Initial saver completed writes then hit a legacy text-decoding error. Finalizer verifies source, archive members, marker and protected files.",
+  "finalizer_sha256": "02207ba83e27010d552634092bd6b42b5e492208d21360395aedc84b21bc0146"
+}

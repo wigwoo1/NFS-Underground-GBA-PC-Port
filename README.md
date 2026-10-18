@@ -33,3 +33,10 @@ This is a source snapshot of an existing development workspace. Some historical 
 ## Licensing
 
 mGBA and bundled third-party code retain their original licenses/notices. Windows downloads include mGBA and runtime notices. No new project-wide license has been chosen for project-specific code. No rights to Electronic Arts, Nintendo, or other game content are granted.
+
+
+## Source update: owned road/wall history (2026-10-18)
+
+Opt-in prepared scenes now own their retained road/wall event links within the existing memory budget. Tests cover 600 original steps, 590 scene pairs, 53,913,600 cell slots, and exact GPU endpoint comparisons at 4K and an odd output size, including split-owner scenes. Snapshot reads survive freeing the source frames and game core.
+
+This is a diagnostic ownership milestone. Complete historical geometry/material reconstruction and live smoothing remain unfinished. Two live-host attempts failed real-time performance gates; audio underruns also occurred in the unchanged control. The downloadable Windows and Android previews remain unchanged. See [verification reports](docs/verification/owned-scene-history-20261018/) and [research status](docs/STATUS.md). Overall completion remains a rough 73% estimate; mGBA still executes game logic.
