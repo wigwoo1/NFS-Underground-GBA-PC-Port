@@ -1,0 +1,23 @@
+"""Verify bounded refresh handoff against original output and old-source parity."""
+from pathlib import Path
+import hashlib,json
+source=Path(__file__).resolve().parent;base=Path(r'C:\NFSUG-Workspace');out=base/'NFSUG-pc-traffic-refresh2-core';sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+paths={'build':out/'traffic-refresh2-build-report.json','core':out/'traffic-refresh2-core-test-report.json','helpers':base/'NFSUG-pc-traffic-refresh2-helper-tests/traffic-refresh2-helper-test-report.json','route':base/'NFSUG-pc-traffic-refresh2-route-tests/diverse-route-report.json'}
+r={k:json.loads(p.read_text()) for k,p in paths.items()};b=r['build'];c=r['core'];h=r['helpers'];t=r['route']
+assert b['core_sha256']==c['core_sha256']==t['core_sha256']==sha(out/'capture-host.dll')
+for n,v in b['maintained_source_sha256'].items():assert sha(source/n)==v,n
+for n,v in b['staged_input_sha256'].items():assert sha(out/'source'/n)==v,n
+assert c['result']=='PASS_TRAFFIC_REFRESH2_CORE_PARITY' and c['all_complete_source_bytes_exact'] and c['all_original_pixels_exact'] and c['transfers_balanced']
+assert h['second_crossing_at_other_allowed_stage_rejected'] and h['unobserved_final_stage_crossing_rejected'] and h['first_stage_all48_camera_mutations_rejected']
+assert h['result']=='PASS_SINGLE_CROSSING_TWO_STAGE_TRAFFIC_GUARDS' and h['one_refresh_at_either_observed_multiply_stage'] and h['two_or_more_refreshes_backwards_and_wrap_rejected'] and h['second_crossing_and_wrong_phase_and_changed_index_rejected'] and h['all48_camera_byte_mutations_rejected']
+assert t['result']=='VERIFIED_TRAFFIC_REFRESH2_ROUTE_ORIGINAL_OUTPUT_AND_EXISTING_SOURCE_PARITY' and t['steps']==6000 and t['all6000_original_pixels_exact'] and t['original_clocks_exact'] and t['allocation_lifetimes_balanced']
+assert t['audio_frames']==4430117 and t['audio_sha256']=='e3d0620b037591b5e4d2fb1e806448e2635eb056d614dd3710942a3c6b645807'
+assert t['complete_source_frames']==t['prepared_source_frames']==5990 and t['all_late_capture_gaps_resolved'] and len(t['recovered_source_steps'])==20
+assert [f['step'] for f in t['failures']]==list(range(1,11)) and len(t['previous_source_failure_steps'])==30
+assert 3610 in t['recovered_source_steps']
+assert t['provenance_comparator_sha256']==sha(source/'background_provenance_compare.py') and t['prepared_input_comparator_sha256']==sha(source/'scene_input_compare.py')
+assert len(t['accepted_unselected_provenance_updates'])==len(t['prepared_inputs_exact_for_updates'])>0
+for update in t['accepted_unselected_provenance_updates']:assert update['recovered_record_observed_at']<update['step'] and update['baseline_record_observed_at']<update['step']
+comparison=base/'NFSUG-pc-background-provenance-tests/provenance-compare-test-report.json';pr=json.loads(comparison.read_text());assert pr['result']=='PASS_OBSERVED_UNSELECTED_PROVENANCE_ONLY' and pr['helper_sha256']==sha(source/'background_provenance_compare.py') and pr['script_sha256']==sha(source/'test_background_provenance_compare.py')
+report=dict(result='VERIFIED_SINGLE_CROSSING_REFRESH2_RECOVERS_ALL20_ROUTE_GAPS',core_sha256=b['core_sha256'],baseline_core_sha256=b['baseline_core_sha256'],all6000_original_pixels_audio_clocks_exact=True,all_previous_source_components_exact=t['previous_source_components_exact'],all_previous_source_bytes_exact=t['previous_source_bytes_exact'],accepted_unselected_provenance_updates=len(t['accepted_unselected_provenance_updates']),all_renderer_inputs_exact_for_provenance_updates=True,available_and_prepared_source_frames=5990,recovered_source_steps=t['recovered_source_steps'],remaining_startup_failures=10,late_route_failures=0,producer_stats=t['traffic_rotation_stats'],live_integration_verified=False,playable_package_changed=False,full_scene_60fps=False,rough_project_percent=71,receipts={k:dict(path=str(p),sha256=sha(p)) for k,p in paths.items()},script_sha256=sha(Path(__file__)),limits='Offscreen paired route. No full-race or live cadence/smooth60 claim. Confirmed stages only: phase0 at08022d38 or phase1 at08022d44; explicit flag forbids a second refresh across stages, same epoch/scene/camera48bytes/index plus both original products and final provenance guards.',next_dependency='Integrate the receipt-verified core into a separate live test directory, run all regressions and the6000-step original-timed route, require no late source gaps or sampled audio shortages before offering an updated preview.')
+(out/'traffic-refresh2-milestone-report.json').write_text(json.dumps(report,indent=2));print(json.dumps({k:v for k,v in report.items() if k!='receipts'},indent=2))

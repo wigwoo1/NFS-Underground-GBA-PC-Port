@@ -1,0 +1,2 @@
+from pathlib import Path
+p=Path('work/host.c');s=p.read_text().replace('char* loadstate=NULL;','char* loadstate=NULL;char* exitstate=NULL;').replace('else if(!strcmp(argv[i],"--state")','else if(!strcmp(argv[i],"--save-exit")&&i+1<argc)exitstate=argv[++i];else if(!strcmp(argv[i],"--state")');s=s.replace('while(acc>=step){','while(acc>=step&&(!testframes||emuframes<testframes)){');s=s.replace('if(capture_path&&gpu_ready){','if(exitstate)nf_state(exitstate,1);\n if(capture_path&&gpu_ready){');p.write_text(s)

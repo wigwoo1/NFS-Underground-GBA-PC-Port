@@ -1,0 +1,14 @@
+from pathlib import Path
+import ctypes as C,json,struct,hashlib
+p=Path('work/camera');g=json.loads((p/'stable-road-geometric-inputs.json').read_text());t=json.loads((p/'stable-road-source-transform-comparison.json').read_text());rom=Path('G:/EXTRA DATA DRIVE/Desktop/Emulators/GBA/GBA ROMS/Need for Speed - Underground (USA, Europe) (En,Fr,De,It).gba').read_bytes();table=C.create_string_buffer(rom[0x627700:0x647700]);d=C.CDLL(str((p/'visibility-probe-wide.dll').resolve()));clip=d.nfs_visibility_wall_clip;clip.argtypes=[C.c_void_p]*3+[C.c_int,C.c_uint,C.c_uint,C.c_void_p];n=C.CDLL(str((p/'road-project-component.dll').resolve()));near=n.nf_road_near_attributes;near.argtypes=[C.c_double,C.c_double,C.c_void_p,C.c_uint,C.c_uint,C.c_uint,C.c_int,C.c_void_p,C.c_void_p];vertex=n.nf_road_vertex_attributes;vertex.argtypes=[C.c_double,C.c_void_p,C.c_uint,C.c_uint,C.c_uint,C.c_void_p,C.c_void_p];checks=[]
+for road,join in zip(g['roads'],t['checks']):
+ h=road['source_attributes_header'];count,shift,height,affine=h[:4];attrs=road['source_attributes'];edges=[]
+ for i in range(count):
+  j=(i+1)%count;z0=join['vertices'][i]['original_camera'][2];z1=join['vertices'][j]['original_camera'][2]
+  if (z0<64)==(z1<64):continue
+  original=(C.c_int32*4)(*attrs[i],*attrs[j]);mutated=(C.c_int32*4)(*original);scratch=C.create_string_buffer(52);struct.pack_into('<hh',scratch,4,z0,z1);heights=(C.c_uint32*4)();assert clip(scratch,heights,mutated,64,0,0,table)==1
+  start=z0<64;endpoint=(C.c_int32*2)(*list(mutated)[0 if start else 2:2 if start else 4]);expected=(C.c_double*2)();actual=(C.c_double*2)();assert vertex(64,endpoint,shift,height,affine,table,expected);assert near(z0,z1,original,shift,height,affine,64,table,actual);assert list(actual)==list(expected)
+  native=(C.c_double*2)();assert near(join['vertices'][i]['native_camera'][2],join['vertices'][j]['native_camera'][2],original,shift,height,affine,64,table,native)
+  edges.append(dict(source_edge=i,next_vertex=j,original_depths=[z0,z1],clipped_attributes=list(endpoint),original_uv=list(expected),corrected_integer_uv=list(actual),native_continuous_uv=list(native),continuous_error_texels=[(native[k]-expected[k])*road['width' if k==0 else 'height'] for k in range(2)]))
+ checks.append(dict(surface=road['surface'],source=join['source'],edges=edges))
+report=dict(result='PASS',checks=checks,scope='Source edge identity and original integer depths; recovered wall_clip versus corrected UV component. Captured original full pipeline parity is separately verified. Fractional native depth differences measured, no screen matching or production change.',geometry_sha256=hashlib.sha256((p/'stable-road-geometric-inputs.json').read_bytes()).hexdigest());(p/'stable-road-near-edge-comparison.json').write_text(json.dumps(report,indent=2));print(json.dumps(report,indent=2))

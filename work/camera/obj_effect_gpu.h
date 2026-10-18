@@ -1,0 +1,9 @@
+#ifndef NF_OBJ_EFFECT_GPU_H
+#define NF_OBJ_EFFECT_GPU_H
+/* Verified original expanded-RGB effects shared by constant and textured shaders. */
+#define NF_OBJ_EFFECT_VARIANT_GLSL "vec3 variant(vec3 c,float bit){if(parameters.x<1.5||bit<0.5)return c;float y=coefficients.z;if(parameters.x<2.5)return c+floor((vec3(255.0)-c)*y/16.0);vec3 dark=floor(c*(16.0-y)/16.0);dark.r=c.r-floor(c.r*y/16.0);return dark;}"
+#define NF_OBJ_EFFECT_BODY_GLSL_IMPL(prepared) "bool hasObj=objectColor.a>0.5,hasBg=backgroundColor.a>0.5;bool front=hasObj&&(!hasBg||parameters.z<=parameters.w);bool semi=front&&parameters.y>0.5;vec3 o=floor(objectColor.rgb+vec3(0.5)),b=floor(backgroundColor.rgb+vec3(0.5)),d=floor(backdropColor.rgb+vec3(0.5));b=variant(b,firstTargets.y);d=variant(d,firstTargets.z);if(parameters.y<0.5&&!(" prepared "))o=variant(o,firstTargets.x);vec3 top,under;float first,second;bool pair;if(front){top=o;under=hasBg?b:d;first=firstTargets.x;second=hasBg?secondTargets.y:secondTargets.z;pair=true;}else if(hasBg){top=b;under=hasObj?o:d;first=firstTargets.y;second=hasObj?secondTargets.x:secondTargets.z;pair=true;}else{top=d;under=d;first=firstTargets.z;second=0.0;pair=false;}bool mixColor=pair&&second>0.5&&(semi||(parameters.x>0.5&&parameters.x<1.5&&first>0.5));if(semi&&!mixColor&&parameters.x>1.5&&(secondTargets.y>0.5||secondTargets.z>0.5||(!(" prepared ")&&firstTargets.x>0.5)))top=variant(top,1.0);if(mixColor)top=min(vec3(255.0),floor((top*coefficients.x+under*coefficients.y)/16.0));gl_FragColor=vec4(top/255.0,1.0);"
+#define NF_OBJ_EFFECT_BODY_GLSL NF_OBJ_EFFECT_BODY_GLSL_IMPL("false")
+static const char*obj_effect_fragment="#version 120\n" "uniform vec4 objectColor,backgroundColor,backdropColor,parameters,firstTargets,secondTargets,coefficients;" NF_OBJ_EFFECT_VARIANT_GLSL "void main(){" NF_OBJ_EFFECT_BODY_GLSL "}";
+
+#endif

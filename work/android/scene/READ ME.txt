@@ -1,0 +1,30 @@
+Shared native scene input component for Android - 2026-10-15
+
+Uses byte-identical copies of the PC scene_packet, snapshot_store,
+presentation_timeline and rigid_motion sources (nine .c/.h files total).
+Copies are staged locally and hash-recorded; PC sources are not patched.
+The small platform export shim translates Windows declarations for Android.
+The owner API validates/copies NSP1 packets and exposes bounded metadata and
+copies of their five sections. No emulator-memory pointers escape.
+Packets over 256 MiB fail explicitly; no geometry is silently omitted.
+
+build_scene.py requires --ndk --ninja --cmake --output. It builds host and
+ARM64/x86_64 Android libraries and native Android diagnostic executables.
+test_scene_host.py checks real captured packets, immutable copy lifetime,
+malformed inputs, short-buffer atomicity, snapshot pinning and epoch reset.
+run_scene_android.py executes the native x86_64 library on owned NFSUG_API30
+emulator-5556 with hash-verified captured fixtures. ARM64 execution is untested.
+Fixtures contain captured game data and remain in local diagnostic scratch;
+they are not bundled in a user APK or redistributed by this component.
+
+This is an input/ownership component for a future Android native scene
+renderer. It does not capture live mGBA scenes, upload GPU geometry, render
+pixels, solve player transforms or establish smooth 60-fps gameplay.
+The current public Android APK still displays the original framebuffer.
+
+Next: extract the existing read-only live capture observer from the Windows
+bridge and attach it to the Android core's single owner thread; preserve
+complete packet/material/visibility/epoch ownership and original timing.
+Verify capture-on/off frame parity before connecting a GLES scene consumer.
+The Windows bridge currently owns its own core and Windows profiling setup;
+its initialization cannot simply replace the Android app boundary.

@@ -1,0 +1,24 @@
+# Never commit private game data or credentials
+*.gba
+*.sav
+*.state
+*.p12
+*.jks
+*.keystore
+*.pem
+*.key
+.env
+.env.*
+__pycache__/
+*.pyc
+*.o
+*.a
+*.so
+*.dll
+*.exe
+*.raw
+*.rgba
+*.pcm
+*.packet
+*.ppm
+*.log

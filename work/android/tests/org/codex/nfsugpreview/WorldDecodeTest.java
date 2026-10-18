@@ -1,0 +1,12 @@
+package org.codex.nfsugpreview;
+import java.nio.*;import java.nio.file.*;import java.security.*;import java.io.*;
+public final class WorldDecodeTest {
+ static String hash(ByteBuffer b)throws Exception{MessageDigest d=MessageDigest.getInstance("SHA-256");d.update(b);StringBuilder s=new StringBuilder();for(byte v:d.digest())s.append(String.format("%02x",v&255));return s.toString();}
+ public static void main(String[] args)throws Exception{Path input=Paths.get(args[0]),output=Paths.get(args[1]);Files.createDirectories(output);int accepted=0,rejected=0;
+  try(java.nio.file.DirectoryStream<Path> files=Files.newDirectoryStream(input,"*.nsp")){for(Path file:files){byte[] raw=Files.readAllBytes(file);boolean bad=file.getFileName().toString().startsWith("bad-");try{NativeWorldScene world=new NativeWorldScene(new NativeScenePacket(1,raw));if(bad)throw new AssertionError("Accepted bad world");StringBuilder result=new StringBuilder();result.append(world.surfaceCount()).append(' ').append(world.modelCount).append(' ').append(world.commandCount()).append('\n');
+   for(int i=0;i<world.surfaceCount();i++){NativeWorldScene.Surface s=world.surface(i);result.append(i).append(' ').append(s.kind).append(' ').append(s.mode).append(' ').append(s.corners).append(' ').append(s.width).append(' ').append(s.height).append(' ').append(s.lit?1:0).append(' ').append(hash(s.vertices())).append(' ').append(hash(s.uv())).append(' ').append(hash(s.texture())).append(' ').append(hash(s.metadata())).append(' ').append(hash(s.lighting())).append('\n');try{s.texture().put(0,(byte)1);throw new AssertionError();}catch(ReadOnlyBufferException good){}long identity=s.identity()[0];long[] copy=s.identity();copy[0]=99;if(s.identity()[0]!=identity)throw new AssertionError("Identity alias");if(s.metadata().position()!=0)throw new AssertionError();}
+   for(int i=0;i<world.commandCount();i++){NativeWorldScene.Command c=world.command(i);result.append(c.model?'M':'W').append(c.index).append(' ');}result.append('\n').append(hash(world.reciprocal())).append(' ').append(hash(world.bounds())).append('\n');Files.write(output.resolve(file.getFileName()+".txt"),result.toString().getBytes("UTF-8"));accepted++;
+  }catch(IllegalArgumentException good){if(!bad)throw good;rejected++;}}}
+  if(accepted==0||rejected==0)throw new AssertionError();System.out.println("PASS_WORLD_DECODE valid="+accepted+" malformed="+rejected+" immutable=true");
+ }
+}

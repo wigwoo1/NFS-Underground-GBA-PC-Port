@@ -1,0 +1,105 @@
+"""Read-only original per-refresh motion/display measurements during selection."""
+import ctypes as C,struct,json,hashlib,uuid
+from pathlib import Path
+crt=C.CDLL('msvcrt');crt._putenv_s.argtypes=[C.c_char_p,C.c_char_p];assert crt._putenv_s(b'NF_CAPTURE_MODEL_VIEWS',b'1')==0
+p=Path(__file__).resolve().parent;P=C.c_void_p;U=C.c_uint32;Z=C.c_size_t
+rom=Path('G:/EXTRA DATA DRIVE/Desktop/Emulators/GBA/GBA ROMS/Need for Speed - Underground (USA, Europe) (En,Fr,De,It).gba');state=p/'prototype-runs/menu-navigation/quick-1-release.state'
+d=C.CDLL(str(p/'visibility-probe-wide.dll'));d.nf_init.argtypes=[C.c_char_p]*2;d.nf_state.argtypes=[C.c_char_p,C.c_int];d.nf_pixels.restype=P;d.nf_read.argtypes=[U,C.c_int];d.nf_read.restype=U;d.nf_live_visibility_enable.argtypes=[P,Z,Z];d.nf_dump.argtypes=[C.c_char_p,U,U]
+Sink=C.CFUNCTYPE(C.c_int,P,C.c_uint64,P,Z);d.nf_native_scene_sink.argtypes=[Sink,P]
+d.nf_live_completed_draw_timing.argtypes=[C.c_uint64,U,U,P]
+d.nf_layer_queue_selection_page_equal.argtypes=[C.c_uint64,U,U]
+d.nf_layer_queue_selection_scene_hold.argtypes=[C.c_uint64,U,U,U]
+d.nf_layer_queue_text_row.argtypes=[C.c_uint64,U,U,P,P,U]
+d.nf_layer_queue_row.argtypes=[C.c_uint64,U,U,P,U]
+d.nf_bitmap_text_plane.argtypes=[C.c_uint64,U,P,P,U]
+publications=[];latest={};previous={};rows=[];display_frames={};boundary_checks=[];scanout_checks=[];split_checks=[];text_checks=[];snapshot_checks=[]
+@Sink
+def sink(ctx,epoch,data,size):
+ raw=C.string_at(data,size);serial,begin,end,page=struct.unpack_from('<4I',raw,16);wo=struct.unpack_from('<I',raw,48)[0];world_count=struct.unpack_from('<I',raw,wo+4)[0];io=struct.unpack_from('<I',raw,84)[0];identity=struct.unpack_from('<5I',raw,io+8+world_count*20)
+ previous.clear();previous.update(latest)
+ latest.update(page=page,epoch=epoch,end=end,serial=serial,state=identity[1],object=identity[2]);views=[]
+ for ordinal in range(4):
+  timing=(U*6)()
+  if not d.nf_live_completed_draw_timing(epoch,serial,ordinal,timing):break
+  views.append(dict(ordinal=ordinal,root_refresh=timing[0],model_draw_refresh=timing[1],root_display_control=timing[2],model_display_control=timing[3],framebuffer_base=timing[4],world_draws_before_model=timing[5]))
+ publications.append(dict(serial=serial,begin=begin,end=end,views=views));return 1
+def words(address,count):return [d.nf_read(address+i*4,4) for i in range(count)]
+assert d.nf_init(str(rom).encode(),b'') and d.nf_state(str(state).encode(),0)
+assert d.nf_native_scene_sink(sink,None) and d.nf_native_scene_multimodel(1);raw=rom.read_bytes();assert d.nf_live_visibility_enable(raw,len(raw),16*1024*1024);d.nf_live_surface_audit_enable(1);assert d.nf_layer_queue_enable(1)
+assert d.nf_bitmap_text_enable(1)
+run=p/'prototype-runs'/('scene-boundary-ownership-'+uuid.uuid4().hex);actual=[]
+try:
+ for step in range(240):
+  keys=16 if 90<=step<92 or 180<=step<182 else 0;d.nf_frame(keys);row=dict(step=step,keys=keys,refresh=d.nf_layer_queue_latest(),latest_serial=latest.get('serial'),display_control=d.nf_read(0x04000000,2),mode=d.nf_read(0x03005f14,4),frontend=d.nf_read(0x03006710,1),display_sha256=hashlib.sha256(C.string_at(d.nf_pixels(),240*160*4)).hexdigest())
+  if latest:
+   row['display_page_equal_latest']=bool(d.nf_layer_queue_selection_scene_hold(latest['epoch'],latest['end'],latest['page'],row['refresh']))
+   camera=d.nf_read(latest['state']+84,4);row.update(camera_words=words(camera,12),object_position_words=words(latest['object']+12,3),model_pointer=d.nf_read(latest['object']+140,4))
+   row['object_rotation_words']=words(row['model_pointer']+320,9)
+  if row['refresh'] in [3524,3525,3543,3544,3615,3616,3633,3634]:display_frames[row['refresh']]=C.string_at(d.nf_pixels(),240*160*4)
+  if row['refresh'] in [3520,3524,3611,3615]:
+   controls=[]
+   for sy in range(160):
+    full=C.create_string_buffer(100480);assert d.nf_layer_queue_row(latest['epoch'],row['refresh'],sy,full,100480);controls.append(int.from_bytes(full.raw[8:10],'little'))
+   scanout_checks.append(dict(refresh=row['refresh'],controls=sorted(set(controls)),page_rows={str(pg):sum(((v>>4)&1)==pg for v in controls) for pg in [0,1]}))
+  if row['refresh'] in [3524,3615]:boundary_checks.append(dict(refresh=row['refresh'],latest=dict(latest),previous=dict(previous),previous_hold=bool(previous and d.nf_layer_queue_selection_scene_hold(previous['epoch'],previous['end'],previous['page'],row['refresh']))))
+  if row['refresh'] in [3532,3623]:
+   d.nf_layer_queue_selection_split.argtypes=[C.c_uint64,U,U,U,U,U,P];split=U(999);target=3524 if row['refresh']==3532 else 3615
+   found=d.nf_layer_queue_selection_split(latest['epoch'],previous['end'],previous['page'],latest['end'],latest['page'],target,C.byref(split));split_checks.append(dict(target=target,found=found,split=split.value))
+   if target==3524:
+    assert found and split.value==20
+    d.nf_live_completed_draw_scene_packet.argtypes=[C.c_uint64,U,P,P,P,U,P];d.nf_scene_packet_free.argtypes=[P]
+    for label,serial in [('older',previous['serial']),('newer',latest['serial'])]:
+     packet=P();size=Z();poses=C.create_string_buffer(144*56);count=U();assert d.nf_live_completed_draw_scene_packet(latest['epoch'],serial,C.byref(packet),C.byref(size),poses,144,C.byref(count))
+     Path(str(run)+'-'+label+'-packet.bin').write_bytes(C.string_at(packet,size.value));Path(str(run)+'-'+label+'-cameras.bin').write_bytes(poses.raw[:count.value*56]);d.nf_scene_packet_free(packet)
+    with Path(str(run)+'-boundary-hud.bin').open('wb') as f:
+     for sy in range(160):
+      hud=C.create_string_buffer(34944);assert d.nf_layer_queue_hud_row(latest['epoch'],target,sy,hud,34944);f.write(hud.raw)
+    for e,oe,op,ne,np,tr in [(latest['epoch']+1,previous['end'],0,latest['end'],1,target),(latest['epoch'],previous['end'],0,latest['end'],0,target),(latest['epoch'],previous['end'],0,latest['end'],1,target-1),(latest['epoch'],previous['end']-1,0,latest['end'],1,target)]:
+     rejected=U(999);assert not d.nf_layer_queue_selection_split(e,oe,op,ne,np,tr,C.byref(rejected)) and rejected.value==999
+    split_checks.append(dict(atomic_negative_cases=4,result='PASS'))
+  rows.append(row)
+  if latest and step%10==0:
+   for page in range(2):
+    indices=C.create_string_buffer(38400);coverage=C.create_string_buffer(38400);assert d.nf_bitmap_text_plane(latest['epoch'],page,indices,coverage,38400)
+    owned=[i for i,v in enumerate(coverage.raw) if v];mismatch=[i for i in owned if indices.raw[i]!=d.nf_read(0x06000000+page*0xa000+i,1)]
+    text_checks.append(dict(step=step,page=page,owned_pixels=len(owned),mismatches=len(mismatch)))
+   hits=0;valid=0;mismatch=0
+   for y in range(160):
+    a=C.create_string_buffer(240);b=C.create_string_buffer(240);full=C.create_string_buffer(100480)
+    if d.nf_layer_queue_text_row(latest['epoch'],row['refresh'],y,a,b,240):
+     valid+=1;assert d.nf_layer_queue_row(latest['epoch'],row['refresh'],y,full,100480);control=int.from_bytes(full.raw[8:10],'little');base=128+(0xa000 if control&16 else 0)+y*240
+     for x,v in enumerate(b.raw):
+      if v:hits+=1;mismatch+=a.raw[x]!=full.raw[base+x]
+   snapshot_checks.append(dict(step=step,valid_rows=valid,pixels=hits,mismatches=mismatch))
+ for name,base,n in [('ewram',0x02000000,0x40000),('iwram',0x03000000,0x8000)]:
+  path=Path(str(run)+'-'+name+'.bin');d.nf_dump(str(path).encode(),base,n);actual.append(path.read_bytes())
+finally:d.nf_close()
+b=C.CDLL(str(p.parent/'nfsprobe.dll'));b.nf_init.argtypes=[C.c_char_p]*2;b.nf_state.argtypes=[C.c_char_p,C.c_int];b.nf_dump.argtypes=[C.c_char_p,U,U];assert b.nf_init(str(rom).encode(),b'') and b.nf_state(str(state).encode(),0)
+try:
+ for row in rows:b.nf_frame(row['keys'])
+ for expected,(name,base,n) in zip(actual,[('ewram',0x02000000,0x40000),('iwram',0x03000000,0x8000)]):
+  path=Path(str(run)+'-baseline-'+name+'.bin');b.nf_dump(str(path).encode(),base,n);assert path.read_bytes()==expected
+finally:b.nf_close()
+gaps=[]
+for a,z in zip(publications,publications[1:]):
+ if z['end']-a['end']>8:
+  inside=[r for r in rows if a['end']<=r['refresh']<z['end']]
+  gaps.append(dict(older=a,newer=z,measured_refreshes=len(inside),unique_display_hashes=len({r['display_sha256'] for r in inside}),unique_camera_states=len({tuple(r['camera_words']) for r in inside}),unique_object_positions=len({tuple(r['object_position_words']) for r in inside}),display_page_equal_refreshes=[r['refresh'] for r in inside if r.get('display_page_equal_latest')],latest_serials=sorted({r['latest_serial'] for r in inside}),unique_object_rotations=len({tuple(r['object_rotation_words']) for r in inside}),display_change_refreshes=[r['refresh'] for prior,r in zip(inside,inside[1:]) if r['display_sha256']!=prior['display_sha256']],camera_change_refreshes=[r['refresh'] for prior,r in zip(inside,inside[1:]) if r['camera_words']!=prior['camera_words']],display_controls=sorted({r['display_control'] for r in inside})))
+display_differences=[]
+from PIL import Image
+for a,z in [(3524,3525),(3543,3544),(3615,3616),(3633,3634)]:
+ left,right=display_frames[a],display_frames[z];changes=[i for i in range(240*160) if left[i*4:i*4+4]!=right[i*4:i*4+4]];by_row=[sum(i//240==y for i in changes) for y in range(160)]
+ display_differences.append(dict(older_refresh=a,newer_refresh=z,changed_pixels=len(changes),bounds=None if not changes else [min(i%240 for i in changes),min(i//240 for i in changes),max(i%240 for i in changes)+1,max(i//240 for i in changes)+1],changed_rows={y:n for y,n in enumerate(by_row) if n}))
+ for refresh in [a,z]:Image.frombytes('RGBA',(240,160),display_frames[refresh]).save(Path(str(run)+'-display-'+str(refresh)+'.png'))
+Path(str(run)+'-text-checks.json').write_text(json.dumps(text_checks,indent=2))
+Path(str(run)+'-text-snapshots.json').write_text(json.dumps(snapshot_checks,indent=2))
+print('SNAPSHOTS',sum(r['valid_rows'] for r in snapshot_checks),sum(r['pixels'] for r in snapshot_checks),sum(r['mismatches'] for r in snapshot_checks))
+print('TEXT_CHECKS',len(text_checks),'owned',sum(r['owned_pixels'] for r in text_checks),'mismatches',sum(r['mismatches'] for r in text_checks))
+report=dict(result='PASS',display_differences=display_differences,original_updates=len(rows),exact_final_original_ram=True,publication_gaps=gaps,scope='Original per-refresh camera/object memory and complete emulator display hashes; no polygon matching or native pixel parity/smooth60fps proof.')
+Path(str(run)+'-rows.json').write_text(json.dumps(rows,indent=2));Path(str(run)+'-report.json').write_text(json.dumps(report,indent=2));print(json.dumps(report,indent=2));print(run)
+
+Path(str(run)+'-boundary-checks.json').write_text(json.dumps(boundary_checks,indent=2));print('BOUNDARY',json.dumps(boundary_checks))
+
+Path(str(run)+'-scanout-checks.json').write_text(json.dumps(scanout_checks,indent=2));print('SCANOUT',scanout_checks)
+
+Path(str(run)+'-split-checks.json').write_text(json.dumps(split_checks,indent=2));print('SPLITS',split_checks)

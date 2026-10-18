@@ -1,0 +1,56 @@
+#define COBJMACROS
+#include <windows.h>
+#include <GL/gl.h>
+#include <d3d11.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+/* Standalone diagnostic: readback verifies cross-API pixels, never a live path. */
+__declspec(dllexport) int nf_dx_fullscene_blit_test(uint64_t*out){
+ if(!out||!wglGetCurrentContext())return 31;
+ memset(out,0,16*sizeof(*out));int status=0,locked=0,pushed=0;HRESULT hr=0;GLuint rb=0,fbo=0;GLint oldfbo=0,oldread=0,oldrb=0,oldpack=0;
+ ID3D11Device*device=NULL;ID3D11DeviceContext*context=NULL;ID3D11Texture2D*texture=NULL,*staging=NULL;HANDLE interop=NULL,object=NULL;uint8_t*expected=NULL;
+ HANDLE(WINAPI*open_device)(void*)=(void*)wglGetProcAddress("wglDXOpenDeviceNV");BOOL(WINAPI*close_device)(HANDLE)=(void*)wglGetProcAddress("wglDXCloseDeviceNV");
+ HANDLE(WINAPI*register_object)(HANDLE,void*,GLuint,GLenum,GLenum)=(void*)wglGetProcAddress("wglDXRegisterObjectNV");BOOL(WINAPI*unregister_object)(HANDLE,HANDLE)=(void*)wglGetProcAddress("wglDXUnregisterObjectNV");
+ BOOL(WINAPI*lock_objects)(HANDLE,GLint,HANDLE*)=(void*)wglGetProcAddress("wglDXLockObjectsNV");BOOL(WINAPI*unlock_objects)(HANDLE,GLint,HANDLE*)=(void*)wglGetProcAddress("wglDXUnlockObjectsNV");
+ void(APIENTRY*gen_rb)(GLsizei,GLuint*)=(void*)wglGetProcAddress("glGenRenderbuffers");void(APIENTRY*delete_rb)(GLsizei,const GLuint*)=(void*)wglGetProcAddress("glDeleteRenderbuffers");void(APIENTRY*bind_rb)(GLenum,GLuint)=(void*)wglGetProcAddress("glBindRenderbuffer");
+ void(APIENTRY*gen_fbo)(GLsizei,GLuint*)=(void*)wglGetProcAddress("glGenFramebuffers");void(APIENTRY*delete_fbo)(GLsizei,const GLuint*)=(void*)wglGetProcAddress("glDeleteFramebuffers");void(APIENTRY*bind_fbo)(GLenum,GLuint)=(void*)wglGetProcAddress("glBindFramebuffer");void(APIENTRY*attach)(GLenum,GLenum,GLenum,GLuint)=(void*)wglGetProcAddress("glFramebufferRenderbuffer");GLenum(APIENTRY*check)(GLenum)=(void*)wglGetProcAddress("glCheckFramebufferStatus");
+ void(APIENTRY*blit)(GLint,GLint,GLint,GLint,GLint,GLint,GLint,GLint,GLbitfield,GLenum)=(void*)wglGetProcAddress("glBlitFramebuffer");
+ if(!blit)return 40;
+ if(!open_device||!close_device||!register_object||!unregister_object||!lock_objects||!unlock_objects||!gen_rb||!delete_rb||!bind_rb||!gen_fbo||!delete_fbo||!bind_fbo||!attach||!check)return 39;
+ glGetIntegerv(0x8ca6,&oldfbo);glGetIntegerv(0x8caa,&oldread);glGetIntegerv(0x8ca7,&oldrb);glGetIntegerv(GL_PACK_ALIGNMENT,&oldpack);glPushAttrib(GL_ALL_ATTRIB_BITS);pushed=1;
+ hr=D3D11CreateDevice(NULL,D3D_DRIVER_TYPE_HARDWARE,NULL,D3D11_CREATE_DEVICE_BGRA_SUPPORT,NULL,0,D3D11_SDK_VERSION,&device,NULL,&context);if(FAILED(hr)){status=1;goto cleanup;}out[0]=1;
+ D3D11_TEXTURE2D_DESC desc;memset(&desc,0,sizeof(desc));desc.Width=3840;desc.Height=2160;desc.MipLevels=desc.ArraySize=1;desc.Format=DXGI_FORMAT_R8G8B8A8_UNORM;desc.SampleDesc.Count=1;desc.Usage=D3D11_USAGE_DEFAULT;desc.BindFlags=D3D11_BIND_RENDER_TARGET|D3D11_BIND_SHADER_RESOURCE;
+ hr=ID3D11Device_CreateTexture2D(device,&desc,NULL,&texture);if(FAILED(hr)){status=2;goto cleanup;}out[1]=1;
+ desc.Usage=D3D11_USAGE_STAGING;desc.BindFlags=0;desc.CPUAccessFlags=D3D11_CPU_ACCESS_READ;hr=ID3D11Device_CreateTexture2D(device,&desc,NULL,&staging);if(FAILED(hr)){status=3;goto cleanup;}
+ interop=open_device(device);if(!interop){status=4;goto cleanup;}out[2]=1;
+ gen_rb(1,&rb);object=register_object(interop,texture,rb,0x8d41,1);if(!object){status=5;goto cleanup;}out[3]=1;
+ if(!lock_objects(interop,1,&object)){status=6;goto cleanup;}locked=1;out[4]=1;
+ gen_fbo(1,&fbo);bind_fbo(0x8d40,fbo);attach(0x8d40,0x8ce0,0x8d41,rb);if(check(0x8d40)!=0x8cd5){status=7;goto cleanup;}
+ expected=malloc(3840u*2160u*4u);if(!expected){status=8;goto cleanup;}
+ bind_fbo(0x8ca8,(GLuint)oldfbo);glPixelStorei(GL_PACK_ALIGNMENT,1);glReadPixels(0,0,3840,2160,GL_RGBA,GL_UNSIGNED_BYTE,expected);
+ glDisable(GL_SCISSOR_TEST);bind_fbo(0x8ca9,fbo);
+ /* D3D top row receives GL top row; retain native 4K pixels entirely on GPU. */
+ blit(0,2160,3840,0,0,0,3840,2160,GL_COLOR_BUFFER_BIT,GL_NEAREST);
+ if(glGetError()){status=9;goto cleanup;}
+ if(!unlock_objects(interop,1,&object)){status=10;goto cleanup;}locked=0;out[5]=1;
+ ID3D11DeviceContext_CopyResource(context,(ID3D11Resource*)staging,(ID3D11Resource*)texture);
+ D3D11_MAPPED_SUBRESOURCE mapped;hr=ID3D11DeviceContext_Map(context,(ID3D11Resource*)staging,0,D3D11_MAP_READ,0,&mapped);if(FAILED(hr)){status=11;goto cleanup;}
+ out[6]=mapped.RowPitch;out[7]=3840u*2160u*4u;int direct=1,flipped=1;
+ for(unsigned y=0;y<2160;y++){const uint8_t*row=(uint8_t*)mapped.pData+y*mapped.RowPitch;if(memcmp(row,expected+y*3840*4,3840*4))direct=0;if(memcmp(row,expected+(2159-y)*3840*4,3840*4))flipped=0;}
+ ID3D11DeviceContext_Unmap(context,(ID3D11Resource*)staging,0);out[8]=direct;out[9]=flipped;if(!flipped)status=12;
+cleanup:
+ out[10]=(uint32_t)hr;out[11]=GetLastError();free(expected);
+ if(locked&&!unlock_objects(interop,1,&object))status=status?status:13;
+ if(pushed){bind_fbo(0x8ca9,(GLuint)oldfbo);bind_fbo(0x8ca8,(GLuint)oldread);glPixelStorei(GL_PACK_ALIGNMENT,oldpack);bind_rb(0x8d41,(GLuint)oldrb);glPopAttrib();}
+ if(fbo)delete_fbo(1,&fbo);
+ if(object){out[12]=unregister_object(interop,object);if(!out[12])status=status?status:14;}
+ if(rb)delete_rb(1,&rb);
+ if(interop){out[13]=close_device(interop);if(!out[13])status=status?status:15;}
+ if(staging)ID3D11Texture2D_Release(staging);
+ if(texture)ID3D11Texture2D_Release(texture);
+ if(context)ID3D11DeviceContext_Release(context);
+ if(device)ID3D11Device_Release(device);
+ GLint restored[4];glGetIntegerv(0x8ca6,&restored[0]);glGetIntegerv(0x8caa,&restored[1]);glGetIntegerv(0x8ca7,&restored[2]);glGetIntegerv(GL_PACK_ALIGNMENT,&restored[3]);if(restored[0]!=oldfbo||restored[1]!=oldread||restored[2]!=oldrb||restored[3]!=oldpack)status=status?status:17;
+ out[14]=glGetError();if(out[14])status=status?status:16;out[15]=status;return status;
+}

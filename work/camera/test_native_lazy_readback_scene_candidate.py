@@ -1,0 +1,5 @@
+import runpy
+from owned_source_d3d_lazy_readback_consumer_candidate import OwnedD3DConsumer
+import owned_native_source_present_profile_session_candidate as session
+session.OwnedD3DConsumer=OwnedD3DConsumer
+runpy.run_path('work/camera/test_owned_native_source_deadline_parity_candidate.py',run_name='__main__')

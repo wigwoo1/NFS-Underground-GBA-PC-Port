@@ -1,0 +1,11 @@
+from pathlib import Path
+import ctypes as C,json,struct,subprocess
+p=Path('work/camera');fn=C.CDLL(str((p/'road-source-query-coverage.dll').resolve())).nf_road_source_query_coverage;fn.argtypes=[C.c_void_p,C.c_double,C.c_double,C.c_void_p];ledger=C.CDLL(str((p/'road-write-ledger.dll').resolve())).nf_road_write_ledger;ledger.argtypes=[C.c_void_p,C.c_uint,C.c_void_p,C.c_void_p,C.c_void_p];table=C.create_string_buffer((p/'road-correction-reciprocal.bin').read_bytes());checks=[]
+for road in json.loads((p/'world-source-clipped-rings.json').read_text())['checks']:
+ cmd=road['command'];ring=road['clipped_ring'];data=(C.c_double*(len(ring)*6))(*(v for r in ring for v in r));bounds=(C.c_uint16*4)(*road['bounds']);writes=(C.c_int16*(38400*2))();assert ledger(data,len(ring),bounds,table,writes)
+ for offset in [0,.25]:
+  shader=p/f'road-{cmd}-query-coverage-{offset}.frag';shader.write_text((p/'road_source_query_coverage_gpu.frag').read_text().replace('QUERY_OFFSET',str(offset)));output=p/f'road-{cmd}-query-coverage-{offset}-output.bin';run=subprocess.run([str((p/'road-source-query-coverage-gpu-probe.exe').resolve()),str(shader),str(p/f'road-{cmd}-index-cases-0.bin'),str(p/'road-correction-reciprocal.bin'),str(p/f'road-{cmd}-span-gpu-ring.bin'),str(p/f'road-{cmd}-index-texture.bin'),str(output),str(p/'road_source_span_cache_double.frag'),str(p/f'road-{cmd}-double-coverage-cache.frag')],capture_output=True,text=True,timeout=120);assert run.returncode==0,(run.returncode,run.stdout,run.stderr);actual=list(struct.iter_unpack('<4i',output.read_bytes()));assert len(actual)==38400
+  for i,value in enumerate(actual):
+   row,x=divmod(i,240);out=(C.c_double*3)();ok=fn(writes,x+offset,row+offset,out);want=tuple(round(v*65536) for v in out)+(1,) if ok else (-77,)*4;assert value==want,(cmd,offset,i,value,want)
+  checks.append(dict(partially_covered_queries=sum(v[3]==1 and 0<v[2]<65536 for v in actual),command=cmd,offset=offset,exact_queries=38400))
+report=dict(result='PASS',checks=checks,scope='ActualGPU nativegeometry->span->writewinner coveragecache->fractional winning-source query versus CPU, integer andquarterphase. Mixedvisibility cells return fractionalcoverage; finalnativecoverage/UV/worldmotion pending.');(p/'road-source-query-coverage-gpu-tests.json').write_text(json.dumps(report,indent=2));print(report)

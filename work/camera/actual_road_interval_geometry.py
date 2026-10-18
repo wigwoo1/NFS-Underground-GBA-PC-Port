@@ -1,0 +1,8 @@
+from pathlib import Path
+import ctypes as C,json,struct
+p=Path(__file__).resolve().parent
+source=C.CDLL(str(p/'road-source-between.dll')).nf_road_source_ring_between;source.argtypes=[C.c_void_p,C.c_uint,C.c_void_p,C.c_void_p,C.c_void_p,C.c_double,C.c_void_p,C.c_void_p,C.c_void_p,C.c_uint,C.c_void_p]
+clip=C.CDLL(str(p/'road-clip-continuous.dll')).nf_road_clip_continuous;clip.argtypes=[C.c_void_p,C.c_uint,C.c_double,C.c_double,C.c_void_p,C.c_void_p,C.c_uint,C.c_void_p]
+poses=json.loads((p/'motion-road-source-endpoints.json').read_text())['checks'];bounds={r['command']:r['bounds'] for r in json.loads((p/'world-source-clipped-rings.json').read_text())['checks']}
+def interval_ring(command,begin_a,phase,table):
+ rows=[r for r in poses if r['command']==command];ordinal=next(i for i,r in enumerate(rows) if r['begin']==begin_a);a,b=rows[ordinal:ordinal+2];count=len(a['world']);world=(C.c_double*(count*3))(*(v for r in a['world'] for v in r));raw=struct.pack('<6I66i',*a['attributes_header'],*(v for pair in a['attributes'] for v in pair),*([0]*(64-count*2)));out=(C.c_double*320)();n=C.c_uint();assert source(world,count,raw,bytes.fromhex(a['matrix_hex']),bytes.fromhex(b['matrix_hex']),phase,(C.c_int32*3)(120,87,128),table,out,64,C.byref(n));ring=[[out[i*5],out[i*5+1],out[i*5+1],out[i*5+2],out[i*5+3],out[i*5+4]] for i in range(n.value)];data=(C.c_double*(len(ring)*6))(*(v for r in ring for v in r));clipped=(C.c_double*768)();cn=C.c_uint();bd=bounds[command];assert clip(data,len(ring),bd[0],bd[1],table,clipped,128,C.byref(cn));return [list(clipped[i*6:i*6+6]) for i in range(cn.value)]

@@ -1,0 +1,16 @@
+import json,sys
+from pathlib import Path
+r=json.loads(Path(sys.argv[1]).read_text());rows=[]
+for sample in r['presentation_samples']:
+ stages=sample['prepared']['consumer_stages'];stage=next(s for s in stages if s['stage']=='ordered_sky_world_hud');t=stage['native_hud_ticks'];outer=stage['native_tail_ticks']
+ assert len(t)==12 and t[0]>0 and t[0]==outer[0] and t[1]>=outer[5]
+ if t[2]==0:
+  assert all(v==0 for v in t[2:]);continue
+ assert all(a<=b for a,b in zip(t[1:],t[2:])) and t[11]<=outer[6]
+ names=['validation','target_copy','plane0_copy','plane0_upload','plane1_copy','plane1_upload','plane2_copy','plane2_upload','records_copy','draw']
+ values={n+'_ms':(b-a)*1000/t[0] for n,a,b in zip(names,t[1:],t[2:])}
+ assert abs(sum(values.values())-(t[11]-t[1])*1000/t[0])<1e-6
+ rows.append(dict(display_index=sample['display_index'],**values))
+assert rows
+out=dict(result='PASS_RETAINED_HUD_PHASES',samples=len(rows),maxima={k:max(x[k] for x in rows) for k in rows[0] if k!='display_index'},scope='Last retained presentation window; exact native containment and phase sum, not full-run cadence or exclusive driver/GPU cause.')
+Path(sys.argv[2]).write_text(json.dumps(out,indent=2));print(json.dumps(out))

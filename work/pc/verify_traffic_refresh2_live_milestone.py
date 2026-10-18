@@ -1,0 +1,21 @@
+"""Bind full-route coverage and one-crossing guards to a separately tested preview."""
+from pathlib import Path
+import hashlib,json
+source=Path(__file__).resolve().parent;base=Path(r'C:\NFSUG-Workspace');out=base/'NFSUG-pc-traffic-refresh2-live-tests';core=base/'NFSUG-pc-traffic-refresh2-core';sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+paths={'build':out/'live-build-report.json','regression':out/'live-test-report.json','live':out/'traffic-live-route-test-report.json','audit':out/'logic-audit-test-report.json','package':out/'traffic-package-report.json','offscreen':core/'traffic-refresh2-milestone-report.json','first_stage':base/'NFSUG-pc-traffic-refresh-primary-failure-probe/first-stage-evidence-report.json'}
+r={k:json.loads(p.read_text()) for k,p in paths.items()};b,t,l,a,p,m,e=[r[k] for k in ['build','regression','live','audit','package','offscreen','first_stage']]
+assert b['core_kind']=='guarded-traffic-refresh2-candidate' and m['late_route_failures']==0 and e['result']=='VERIFIED_FIRST_REMAINING_CROSSING_IS_BEFORE_FIRST_MULTIPLY'
+assert b['exe_sha256']==t['exe_sha256']==l['exe_sha256']==a['exe_sha256']==p['exe_sha256']==sha(out/'NFSUG-Source-Native-Preview.exe')
+assert b['core_sha256']==t['core_sha256']==l['core_sha256']==m['core_sha256']==p['core_sha256']==sha(out/'capture-host.dll')
+assert l['result']=='VERIFIED_TRAFFIC_REFRESH2_LIVE_ROUTE_LIMITED_PREVIEW' and l['late_capture_misses']==0 and not l['sampled_audio_queue_empty_observed'] and l['audio_pcm_exact'] and l['original_wall_clock_budget_met']
+session=l['session'];assert session['capture_failure_count']==10 and session['capture_failure_last_frame']==10 and session['published_frames']==5990 and session['prepare_failures']==session['present_failures']==session['timing_errors']==session['capture_gap_fallback_count']==0
+assert l['build_receipt_sha256']==sha(paths['build']) and l['regression_receipt_sha256']==sha(paths['regression'])
+for n,h in b['source_sha256'].items():assert sha(source/n)==h,n
+assert a['result']=='PASS_CURRENT_HOST_LOGIC_CADENCE_AUDIT' and p['result']=='PASS_TRAFFIC_PREVIEW_PACKAGE_AND_BOTH_LAUNCHERS'
+folder=Path(p['folder']);manifest=json.loads((folder/'package-manifest.json').read_text());assert sha(folder/'package-manifest.json')==p['manifest_sha256']
+for n,h in manifest['files'].items():assert sha(folder/n)==h,n
+assert manifest['known_late_source_gaps_tested_route']==0 and manifest['game_logic']=='mGBA original timing' and not manifest['full_scene_60fps'] and not manifest['physical_audio_latency_measured']
+previous=source.parent.parent/'tryout/NFSUG-Traffic-Preview-20261017-65c23dca-3fa8f2ad';old=json.loads((previous/'package-manifest.json').read_text())
+for n,h in old['files'].items():assert sha(previous/n)==h,n
+report=dict(result='VERIFIED_LIVE_REFRESH2_ZERO_LATE_GAPS_PLAYABLE_PREVIEW',folder=str(folder),exe_sha256=b['exe_sha256'],core_sha256=b['core_sha256'],logic_frames=6000,source_frames=5990,late_source_failures=0,startup_source_failures=10,prepare_failures=0,all_original_pcm_and_clocks_preserved=True,elapsed_seconds=session['elapsed_seconds'],driver_polls=session['audio_queue_observations'],sampled_empty_queue_events=0,max_logic_capture_ms=session['max_logic_capture_ms'],all20_route_gaps_recovered=True,full_scene_60fps=False,entire_race_verified=False,physical_xbox_and_intel_tested=False,game_logic='original-timed mGBA core',controlled_added_audio_start_delay_ms=50,physical_sound_latency_measured=False,previous_playable_unchanged=True,rough_project_percent=72,receipts={k:dict(path=str(p),sha256=sha(p)) for k,p in paths.items()},script_sha256=sha(Path(__file__)),limits='Local AMD scripted route, not a full-race or smooth60/Intel/physical-controller proof. Existing source textures and audio reserve retained. Old writer preview PID42352 was open and was left untouched during testing.',next_dependency='Validate the new preview locally on the Intel PC and physical Xbox; proceed to verified full-scene/sky interpolation at original game timing,4K texture option and Android. Do not infer smooth motion from capture completeness or present counts.')
+(out/'traffic-refresh2-live-milestone-report.json').write_text(json.dumps(report,indent=2));print(json.dumps({k:v for k,v in report.items() if k!='receipts'},indent=2))

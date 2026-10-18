@@ -1,0 +1,13 @@
+import json
+from pathlib import Path
+cp=Path('outputs/nfsug-native-renderer/camera-research/checkpoints/endpoint-validation-reuse-20261010');runs=[]
+for name in ('live-candidate-audit.json','live-baseline-audit.json','live-reverse-candidate-audit.json'):
+ r=json.loads(Path(json.loads((cp/name).read_text())['raw']).read_text());ledger=r['bounded_diagnostic_stats']['whole_run_api_intervals']['native_commit_long_intervals'];assert ledger['dropped']==0;rows=[]
+ for w in ledger['records']:
+  commit=w['transaction']['commit'];deadline=w['transaction']['wait'][1];pair=tuple(commit[2:4]);jobs=[j for j in r['world_preparation_stage_samples'] if (j['older'],j['newer'])==pair];assert len(jobs)==1
+  j=jobs[0];t=j['terminal'][5];a=j['parent_sample_rows'][0];b=t['sample_transfer_rows'][0];start=j['parent_start_timing'];c=w['caller_stages']
+  assert start['pack_begin_ns']<=start['packed_ns']<=start['sent_ns'] and t['child_started_ns']<=t['decoded_ns']<=t['initialized_ns']<=t['constructed_ns']<=b['ready_ns'] and a['received_ns']<=a['decoded_ns']<=a['published_ns']
+  rows.append(dict(pair=pair,index=commit[4],gap_ms=w['interval_ns']/1e6,deadline_ns=deadline,request_budget_ms=(deadline-j['started_ns'])/1e6,parent_pack_ms=(start['packed_ns']-start['pack_begin_ns'])/1e6,input_send_ms=(start['sent_ns']-start['packed_ns'])/1e6,child_start_after_send_ms=(t['child_started_ns']-start['sent_ns'])/1e6,child_decode_ms=(t['decoded_ns']-t['child_started_ns'])/1e6,child_initialization_ms=(t['initialized_ns']-t['decoded_ns'])/1e6,construct_ms=(t['constructed_ns']-t['initialized_ns'])/1e6,first_sample_ms=(b['ready_ns']-t['constructed_ns'])/1e6,ready_lateness_ms=(b['ready_ns']-deadline)/1e6,parent_publish_lateness_ms=(a['published_ns']-deadline)/1e6,ready_to_published_ms=(a['published_ns']-b['ready_ns'])/1e6,take_end_lateness_ms=(c['preparation_take_end_ns']-deadline)/1e6,commit_lateness_ms=(commit[6]-deadline)/1e6))
+ runs.append(dict(run=name,rows=sorted(rows,key=lambda x:x['gap_ms'],reverse=True),ready_after_deadline=sum(x['ready_lateness_ms']>0 for x in rows),published_after_deadline=sum(x['parent_publish_lateness_ms']>0 for x in rows)))
+out=dict(runs=runs,scope='All retained long intervals exact sourcepair firstsample joined to native original deadline. Later-fraction gaps reference firstsample availability only, not necessarily the actual selected fraction; elapsed costs overlap and do not prove scheduler causality.')
+(cp/'scene-deadline-availability.json').write_text(json.dumps(out,indent=2));print(json.dumps([dict(run=x['run'],long_rows=len(x['rows']),ready_after_deadline=x['ready_after_deadline'],worst=x['rows'][0]) for x in runs],indent=2))

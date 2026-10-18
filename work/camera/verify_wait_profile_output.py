@@ -1,0 +1,2 @@
+from pathlib import Path
+p=Path('work/camera/test_wait_profile_lifecycle.py');s=p.read_text();s=s.replace('rows=[]','rows=[];profiles=[]\nd.nf_wait_profile_read.argtypes=[P]');s=s.replace('rows.append(list(out));return out','rows.append(list(out))\n if expected!=-1:\n  profile=(U*12)();assert d.nf_wait_profile_read(profile)==1;assert list(profile)[:3]==[out[0],out[2],out[1]];assert profile[7]==out[3] and profile[5]<=profile[6];profiles.append(list(profile))\n return out');s=s.replace("'waits':rows,","'waits':rows,'profiles':profiles,");p.write_text(s)

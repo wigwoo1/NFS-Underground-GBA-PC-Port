@@ -1,0 +1,17 @@
+"""Isolated optimized4K HUD visual reuse with retained hit/miss diagnostics."""
+import runpy
+from pathlib import Path
+original_read=Path.read_text;target=Path('work/camera/run_segmented_wait_profile_candidate.py').resolve()
+def read(path,*args,**kwargs):
+ source=original_read(path,*args,**kwargs)
+ if path.resolve()==target:
+  assert source.count('owned-gpu-segmented-source-candidate.dll')==1
+  source=source.replace('owned-gpu-segmented-source-candidate.dll','owned-gpu-sky-stage-region-candidate.dll')
+  marker=" path=Path('work/camera/prototype-runs')";assert source.count(marker)==1
+  source=source.replace(marker," stats=(C.c_uint64*2)();gpu.nf_hud_visual_cache_stats.argtypes=[C.c_void_p];assert gpu.nf_hud_visual_cache_stats(stats)\n"+marker)
+  source=source.replace(marker," gpu.nf_hud_cpu_profile_count.restype=C.c_uint;gpu.nf_hud_cpu_profile_read.argtypes=[C.c_void_p,C.c_uint];count=gpu.nf_hud_cpu_profile_count();cpurows=(C.c_uint64*(count*11))();assert gpu.nf_hud_cpu_profile_read(cpurows,count);hud_cpu_profile=dict(columns=['epoch','refresh','reuse','has_text','lookup_wall_ns','lookup_cycles','prepare_wall_ns','prepare_cycles','prepare_thread_100ns','candidate_builds','ok'],records=[list(cpurows[i*11:(i+1)*11]) for i in range(count)],dropped=gpu.nf_hud_cpu_profile_dropped())\n"+marker)
+  source=source.replace(marker," gpu.nf_sky_region_count.restype=C.c_uint;gpu.nf_sky_region_read.argtypes=[C.c_uint,C.c_void_p,C.c_void_p,C.c_size_t];sky_region_records=[];sky_region_dir=Path('work/camera/prototype-runs')/('sky-region-'+str(time.time_ns()));sky_region_dir.mkdir();\n for region_index in range(gpu.nf_sky_region_count()):\n  region_row=(C.c_uint64*6)();region_rgb=C.create_string_buffer(3240*16*3);assert gpu.nf_sky_region_read(region_index,region_row,region_rgb,len(region_rgb));region_file=sky_region_dir/(str(region_index)+'.rgb');region_file.write_bytes(region_rgb.raw);gpu.nf_sky_stage_region_read.argtypes=[C.c_uint,C.c_void_p,C.c_size_t];assert gpu.nf_sky_stage_region_read(region_index,region_rgb,len(region_rgb));region_file.with_suffix('.sky.rgb').write_bytes(region_rgb.raw);sky_region_records.append(dict(values=list(region_row),path=str(region_file)))\n"+marker)
+  source=source.replace('dict(targets=list(targets),fences=list(fences))','dict(targets=list(targets),fences=list(fences),hud_visual_cache_stats=list(stats),hud_cpu_profile=hud_cpu_profile,sky_region_records=sky_region_records)')
+ return source
+Path.read_text=read
+runpy.run_path('work/camera/run_sky_attached_reuse_candidate.py',run_name='__main__')

@@ -1,0 +1,7 @@
+from pathlib import Path
+p=Path('work/camera');s=(p/'owned_gpu_sky_stage_candidate.c').read_text();old=' if(sky_stage_enabled){unsigned at=0;glPixelStorei(GL_PACK_ALIGNMENT,1);for(unsigned sy=44;sy<107;sy+=4)for(unsigned sx=8;sx<232;sx+=12){unsigned x=(unsigned)(300+(sx+.5)*13.5),y=2159-(unsigned)((sy+.5)*13.5);glReadPixels(x,y,1,1,GL_RGB,GL_UNSIGNED_BYTE,sky_stage_pixels[owned_pool_slot]+at);at+=3;}if(at!=304*3||glGetError())return 8;}'
+assert s.count(old)==1
+new=''' if(sky_stage_enabled){static uint8_t crop[3240*811*3];unsigned at=0;glPixelStorei(GL_PACK_ALIGNMENT,1);glReadPixels(300,749,3240,811,GL_RGB,GL_UNSIGNED_BYTE,crop);if(glGetError())return 8;for(unsigned sy=44;sy<107;sy+=4)for(unsigned sx=8;sx<232;sx+=12){unsigned x=(unsigned)(300+(sx+.5)*13.5),y=2159-(unsigned)((sy+.5)*13.5);if(x<300||x>=3540||y<749||y>=1560)return 8;memcpy(sky_stage_pixels[owned_pool_slot]+at,crop+((y-749)*3240+(x-300))*3,3);at+=3;}if(at!=304*3)return 8;}'''
+(p/'owned_gpu_sky_stage_crop_candidate.c').write_text(s.replace(old,new))
+b=(p/'build-sky-stage-candidate.ps1').read_text().replace('owned_gpu_sky_stage_candidate.c','owned_gpu_sky_stage_crop_candidate.c').replace('owned-sky-stage-candidate.dll','owned-sky-stage-crop-candidate.dll');(p/'build-sky-stage-crop-candidate.ps1').write_text(b)
+t=(p/'test_sky_stage_reference.py').read_text().replace('owned-sky-stage-candidate.dll','owned-sky-stage-crop-candidate.dll').replace('sky-stage-reference-20261007','sky-stage-crop-reference-20261007');(p/'test_sky_stage_crop_reference.py').write_text(t)

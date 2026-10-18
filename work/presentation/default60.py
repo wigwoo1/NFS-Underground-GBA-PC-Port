@@ -1,0 +1,13 @@
+from pathlib import Path
+p=Path('work/probe.c');s=p.read_text().replace('static int visible_count;','static int visible_count;\nstatic unsigned visible_version;\nAPI unsigned nf_scene_version(void){return visible_version;}')
+s=s.replace('visible_count=scene_enabled&&scene_race_active()&&(display&7)==4?scene_count[page]:0;','int next_count=scene_enabled&&scene_race_active()&&(display&7)==4?scene_count[page]:0;\n  if(next_count!=visible_count||(next_count&&memcmp(visible_polys,scene_polys[page],next_count*sizeof(NFPoly))))visible_version++;\n  visible_count=next_count;')
+p.write_text(s)
+p=Path('work/host.c');s=p.read_text().replace('static int gpu_mode=1,gpu_ready,mode60;','static int gpu_mode=1,gpu_ready,mode60=1;').replace('void nf_60(int);','void nf_60(int);unsigned nf_scene_version(void);')
+s=s.replace('else if(!strcmp(argv[i],"--experimental-60"))','else if(!strcmp(argv[i],"--original-timing"))mode60=0;else if(!strcmp(argv[i],"--experimental-60"))')
+s=s.replace('int displayframes=0,scenes=0,emuframes=0','unsigned version=nf_scene_version();int motionframes=0;int displayframes=0,scenes=0,emuframes=0')
+s=s.replace('if(!draw())errors++;displayframes++;','if(!draw())errors++;displayframes++;\n  unsigned latest=nf_scene_version();if(latest!=version&&scene_available())motionframes++;version=latest;')
+s=s.replace('state=%u pc=%08x display=%04x errors=%d audio=%d\\n','state=%u pc=%08x display=%04x errors=%d audio=%d mode60=%d motion_fps=%.2f present_fps=%.2f\\n')
+s=s.replace('nf_read(0x04000000,2),errors,audio!=0);','nf_read(0x04000000,2),errors,audio!=0,mode60,motionframes/(t-title_time),displayframes/(t-title_time));')
+s=s.replace('NFSUG 60 Hz Lab | %s | scene %.1f fps','NFSUG 60 Hz Active | %s | motion %.1f fps').replace('scenes/(t-title_time),displayframes/', 'motionframes/(t-title_time),displayframes/')
+s=s.replace('scenes=0;displayframes=0;','scenes=0;displayframes=0;motionframes=0;')
+p.write_text(s)

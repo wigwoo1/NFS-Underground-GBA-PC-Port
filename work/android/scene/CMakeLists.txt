@@ -1,0 +1,16 @@
+cmake_minimum_required(VERSION 3.22)
+project(NFSUGAndroidScene LANGUAGES C)
+set(CMAKE_C_STANDARD 11)
+if(NOT ANDROID)
+ message(FATAL_ERROR "Use the NDK toolchain; host testing is separate.")
+endif()
+if(NOT NF_SHARED_SCENE OR NOT EXISTS "${NF_SHARED_SCENE}/scene_packet.c")
+ message(FATAL_ERROR "NF_SHARED_SCENE must be the hash-recorded shared source cache.")
+endif()
+add_library(nfsug_android_scene SHARED nfsug_scene_owner.c
+ "${NF_SHARED_SCENE}/scene_packet.c" "${NF_SHARED_SCENE}/snapshot_store.c"
+ "${NF_SHARED_SCENE}/presentation_timeline.c" "${NF_SHARED_SCENE}/rigid_motion.c")
+target_include_directories(nfsug_android_scene PRIVATE "${NF_SHARED_SCENE}")
+target_compile_options(nfsug_android_scene PRIVATE -include "${CMAKE_CURRENT_SOURCE_DIR}/platform_exports.h")
+target_link_libraries(nfsug_android_scene PRIVATE m)
+target_link_options(nfsug_android_scene PRIVATE "-Wl,--no-undefined" "-Wl,-z,max-page-size=16384")

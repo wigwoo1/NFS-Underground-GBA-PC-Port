@@ -1,0 +1,9 @@
+import json,subprocess,sys,os
+from pathlib import Path
+reference=json.loads(Path('work/camera/prototype-runs/native-backdrop-same-fixture-20261008.json').read_text());p=Path('work/camera/test_owned_native_source_backdrop_batch_parity_candidate.py');s=p.read_text();marker="reference=json.loads(Path('work/camera/prototype-runs/source-direct-present-component.json').read_text());assert ";assert s.count(marker)==1
+prefix='import owned_source_d3d_auxiliary_batch_candidate as scratch_consumer\nimport sys\nsys.modules["owned_source_d3d_backdrop_batch_consumer_candidate"]=scratch_consumer\nimport owned_precomputed_source_cached_library_candidate as cached_source\nsys.modules["owned_precomputed_source_samples_candidate"]=cached_source\nimport owned_source_presentation_batch_candidate as batch\nfrom owned_source_depth_transition_candidate import SourceFaceDeterminants\nbatch.SourceFaceDeterminants=SourceFaceDeterminants\n'
+s=prefix+s[:s.index(marker)]+"\nprint(json.dumps(dict(hashes=[x['native_rgb_sha256'] for x in results],cache_after=cache_after)))\n"
+p=Path('work/camera/prototype-runs/depth-transition-parity-temp.py');p.write_text(s);r=subprocess.run([sys.executable,str(p),reference['fixture'],'unused'],env=os.environ|{'PYTHONPATH':str(Path('work/camera').resolve())},capture_output=True,text=True);assert r.returncode==0,r.stderr
+actual=json.loads(r.stdout);expected=next(x for x in reference['runs'] if x['renderer']=='backdrop_batch');assert actual['hashes']==expected['hashes'];assert actual['cache_after'][2]==0
+out=dict(result='PASS_DEPTH_TRANSITION_VALID_FIXTURE_4K_PARITY',fixture=reference['fixture'],actual=actual,scope='Five actual4K GPU readbacks exact same fixture baseline hashes; both-valid path regression only, not failing-pair fractional fidelity or gameplay timing.')
+Path('work/camera/prototype-runs/native-auxiliary-batch-parity-20261008.json').write_text(json.dumps(out,indent=2));print(out['result'])

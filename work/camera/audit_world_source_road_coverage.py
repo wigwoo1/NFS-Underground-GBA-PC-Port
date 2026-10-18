@@ -1,0 +1,7 @@
+from pathlib import Path
+import json,sys
+p=Path('work/camera');s=(p/'sample_original_write_order_oracle.py').read_text();begin=s.index('# Independent diagnostic oracle.');end=s.index("for road,g in zip(r['checks'],geo['roads']):",begin);s=s[:begin]+s[end:];s=s.replace('stable-road-owned-continuous-clipped-rings.json','world-source-clipped-rings.json');s=s.replace('stable-road-original-write-order-oracle-','world-source-road-coverage-audit-')
+needle="checks.append(dict(command=road['command'],"
+s=s.replace(needle,"expected_destinations={struct.unpack_from('<I',original,i)[0] for i in range(0,len(original),5)}\n extra=sorted(set(write_ledger)-expected_destinations);missing=sorted(expected_destinations-set(write_ledger))\n checks.append(dict(extra_destinations=extra,missing_destinations=missing,generated_destinations=len(write_ledger),command=road['command'],")
+s=s.replace('ORACLE ONLY verified original clipped rings','Complete world-derived coverage audit');s=s.replace('Captured original source-pipeline output used only to isolate evaluator, never native renderer geometry or polygon correspondence.','Original destinations are comparison targets only; full generated write ledger compared.');sys.argv=['coverage','1'];exec(compile(s,'world_coverage_audit','exec'),globals())
+assert all(not c['extra_destinations'] and not c['missing_destinations'] for c in checks), 'Complete road coverage differs'

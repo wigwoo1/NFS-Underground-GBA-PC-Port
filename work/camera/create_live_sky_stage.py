@@ -1,0 +1,8 @@
+from pathlib import Path
+p=Path('work/camera');s=(p/'live_source_sky_pixels_candidate.py').read_text();s=s.replace('  old=previous[3].sky;new=scene.sky','  assert gpu.nf_sky_stage_mode(1)==0\n  old=previous[3].sky;new=scene.sky')
+s=s.replace('reference=sky_rgba(rows[position][-1],palettes);points=[]','reference=sky_rgba(rows[position][-1],palettes);points=[]\n      gpu.nf_sky_stage_read.argtypes=[U,U,P,C.c_size_t]\n      stage=C.create_string_buffer(912);assert gpu.nf_sky_stage_read(target,selected_epoch,stage,len(stage))==0\n      stage_at=0')
+s=s.replace('points.append(dict(x=sx,y=sy,actual=actual,expected=expected,matches=max(abs(a-b) for a,b in zip(actual,expected))<=1))','stage_color=list(stage.raw[stage_at:stage_at+3]);stage_at+=3\n        points.append(dict(x=sx,y=sy,actual=actual,expected=expected,stage=stage_color,stage_matches=max(abs(a-b) for a,b in zip(stage_color,expected))<=1,matches=max(abs(a-b) for a,b in zip(actual,expected))<=1))')
+(p/'live_source_sky_stage_candidate.py').write_text(s)
+a=(p/'run_queued_source_anchor_candidate.py').read_text().replace('owned-sky-source-context-candidate.dll','owned-sky-stage-candidate.dll');(p/'run_queued_sky_stage_candidate.py').write_text(a)
+r=(p/'run_gentle_sky_pixels_candidate.py').read_text().replace('import live_source_sky_pixels_candidate as diagnostic','import live_source_sky_stage_candidate as diagnostic').replace("if path=='work/camera/run_owned_native_prototype.py':", "if path=='work/camera/run_queued_source_anchor_candidate.py':path='work/camera/run_queued_sky_stage_candidate.py'\n if path=='work/camera/run_owned_native_prototype.py':")
+(p/'run_live_sky_stage_candidate.py').write_text(r)

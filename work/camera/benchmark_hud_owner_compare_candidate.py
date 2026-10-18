@@ -1,0 +1,55 @@
+import sys,json,time,threading
+from pathlib import Path
+from owned_road_record_diagnostic import decode
+from owned_road_history_diagnostic import restore,snapshot
+from owned_sample_signature import signature
+report=json.loads(Path(sys.argv[1]).read_text());meta=report['live_preparation_profiles'][0];folder=Path(meta['capture'])
+source=Path('work/camera/test_external_changed_parent_exit.py').read_text().split('gpu=C.CDLL')[0].replace("folder=Path('work/camera/prototype-runs/fullscene-failure-1791308040881565000')",'folder=Path('+repr(str(folder))+')')
+exec(compile(source,'captured_scene_setup','exec'));prepared.close();history.close()
+h=json.loads((folder/'road-history.json').read_text());roads=decode(json.loads((folder/'older-roads.json').read_text()));expected=json.loads((folder/'prepared-signatures.json').read_text())
+
+import ctypes as C,hashlib
+from owned_precomputed_source_samples_candidate import PrecomputedSourceWorldSamples
+from owned_source_draw_context_candidate import OwnedSourceDraw
+from owned_sky_boundary import SkyBoundary
+from owned_sky_sampler import SkyAsset
+history=EndpointRoadPlanner(rom,table);history.scratch=restore(history.d,h['scratch']);history.epoch=h['epoch'];history.refresh=h['refresh'];prepared=None;cached=None
+from owned_native_source_hud_split_sse2_session_candidate import NativeSourceSession
+session=None;results=[]
+prepared=PreparedWorldMotion(*frames,*scenes,history,roads,rom);cached=PrecomputedSourceWorldSamples(prepared,tuple(x['alpha'] for x in expected),trace=True)
+boundaries=[]
+for scene in scenes:
+ record=next(x for x in report['sky_capture_records'] if (x['epoch'],x['publication'])==scene.identity)
+ origin=record['asset_origin'];offset=record['source']-0x08000000
+ boundaries.append(SkyBoundary(record['epoch'],record['publication'],record['angle'],240,64,0,record['source'],origin,0x06002940,rom[offset:offset+15136]))
+origin=boundaries[0].asset_origin;asset=SkyAsset(origin,rom[origin-0x08000000:origin-0x08000000+15376])
+from owned_native_source_hud_split_session_candidate import NativeSourceSession as Baseline
+from owned_native_source_hud_split_sse2_session_candidate import NativeSourceSession as Candidate
+import statistics
+owners=[]
+for item in expected:
+ alpha=item['alpha'];frame,camera,models,bounds,detail=cached.sample(alpha);offsets,mask,total,_=cached.source_masks[alpha]
+ owners.append(OwnedSourceDraw(frame,camera,models,bounds,detail['geometry_records'],*cached.source_cameras,alpha,offsets,mask,total).attach_sky(asset.sample_continuous(*boundaries,alpha)))
+reference=json.loads(Path('work/camera/prototype-runs/source-segmented-parity-20261008.json').read_text())['samples'];trials=[]
+try:
+ for trial in range(2):
+  pair={}
+  for name in (('baseline_same','sse2_same','baseline_varied','sse2_varied') if trial%2==0 else ('sse2_varied','baseline_varied','sse2_same','baseline_same')):
+   session=(Baseline if name.startswith('baseline') else Candidate)();cost=[];splits=[];sequence=owners if name.endswith('varied') else [owners[0]]*5
+   try:
+    for repeat in range(6):
+     for index,owned in enumerate(sequence):
+      row=session.prepare(owned,1,1,repeat*5+index)
+      if repeat==0:
+       rgba=C.create_string_buffer(3840*2160*4);assert session.consumer.d.nf_d3d_read(rgba,len(rgba))==0
+       import numpy as np
+       rgb=np.frombuffer(rgba.raw,np.uint8).reshape(2160,3840,4)[:,:,:3];assert hashlib.sha256(rgb.tobytes()).hexdigest()==reference[index if name.endswith('varied') else 0]['rgb_sha256']
+      else:
+       cost.append(row['source_prepare_ns']);split=row['hud_input_split'];assert split[3]==1 and split[4]==0 and split[5]==5591040;splits.append(split)
+      session.abort(1,1,repeat*5+index)
+    pair[name]=dict(samples=len(cost),median_source_ms=statistics.median(cost)/1e6,max_source_ms=max(cost)/1e6,median_compare_ms=statistics.median(x[0] for x in splits)/1e6,median_compare_cycles=statistics.median(x[1] for x in splits))
+   finally:session.close()
+  trials.append(pair)
+finally:cached.close();history.close()
+out=dict(result='MATCHED_HUD_OWNER_COMPARE_COST',trials=trials,median_trial_source_ms={k:statistics.median(t[k]['median_source_ms'] for t in trials) for k in ('baseline_same','sse2_same','baseline_varied','sse2_varied')},scope='Two alternating blocks of four renderer conditions (same/varied owner and baseline/SSE2), same five captured owned samples, one warmup/readback cycle and five measured cycles, exact4Khashes eachpair. Native source callback timing only, no live scene change, Present cadence or whole-game proof.')
+Path('work/camera/prototype-runs/hud-owner-matched-cost-20261009.json').write_text(json.dumps(out,indent=2));print(out['median_trial_source_ms'])

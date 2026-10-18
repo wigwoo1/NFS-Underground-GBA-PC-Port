@@ -1,0 +1,104 @@
+#ifndef NF_OWNED_HUD_GPU_H
+#define NF_OWNED_HUD_GPU_H
+#include "layer_snapshot.h"
+#include "hud_row_pool.h"
+#include "../v2/hud_text_sdf.h"
+/* Opt-in scanline-owned HUD research pass; unsupported states fail. */
+#include "obj_tile.h"
+#include "obj_affine_gpu.h"
+#include "obj_effect_gpu.h"
+#include "obj_candidate_effect_gpu.h"
+static unsigned owned_hud_half(const uint8_t*p){return p[0]|((unsigned)p[1]<<8);}
+static double hud_prepare_ms;static unsigned hud_candidate_builds,hud_effect_batches;
+static double owned_hud_total_ms;static unsigned owned_hud_calls;
+static GLuint hud_background,hud_program,hud_text_distance_texture;
+static unsigned hud_context_generation;
+static unsigned hud_drawn,hud_failed;
+static uint8_t hud_text_coverage[38400],hud_text_distance[38400];
+static double hud_text_sdf_ms;static unsigned hud_text_sdf_runs;
+/* Owned OBJ composition; optional owned bitmap text planes remain separate. */
+static int owned_hud_gpu_draw_rows(const void*data,size_t size,const NFHudRowPool*pool,const uint8_t*text_indices_data,const uint8_t*text_coverage_data){
+ LARGE_INTEGER total_begin,total_end;QueryPerformanceCounter(&total_begin);
+ if((!data&&!pool)||size!=160*sizeof(NFHudLayerRow)||!!text_indices_data!=!!text_coverage_data)return 0;
+ if(pool&&!nf_hud_pool_valid(pool,pool->bytes,pool->epoch))return 0;
+ uint32_t hud_refresh;if(pool)hud_refresh=pool->refresh;else memcpy(&hud_refresh,data,4);
+ for(unsigned y=0;y<160;y++){NFHardwareLayerHeader check;if(pool)check=pool->headers[y];else memcpy(&check,(const uint8_t*)data+y*sizeof(NFHudLayerRow),sizeof(check));unsigned display=owned_hud_half(check.registers);if(check.refresh!=hud_refresh||check.row!=y||(display&0x8080)||((display&7)!=4))return 0;}
+ /* Handles belong to one preview context; destroyed contexts release their resources. */
+ if(hud_context_generation!=preview_contexts){hud_background=hud_program=hud_text_distance_texture=0;hud_context_generation=preview_contexts;}
+ GLuint background=hud_background,program=hud_program;static NFHudLayerRow row,rows[160];
+ static uint8_t vram[0x18000];static uint32_t colors[38400],tags[38400],final_colors[38400],metadata[38400],text_colors[38400];
+ uint8_t text_indices[240],text_coverage[240];int has_text=text_indices_data!=NULL;int smooth_text=has_text&&getenv("NF_TEST_HUD_TEXT_SDF")!=NULL;
+ memset(text_colors,0,sizeof(text_colors));
+ void(APIENTRY*active)(GLenum)=(void*)wglGetProcAddress("glActiveTexture");void(APIENTRY*uniform1)(GLint,GLint)=(void*)wglGetProcAddress("glUniform1i");if(!active||!uniform1)return 0;
+ if(!program){if(!obj_shader_create(obj_candidate_effect_fragment))return 0;program=hud_program=obj_affine_program;}
+ glPushAttrib(GL_ALL_ATTRIB_BITS);active(0x84c0);
+ if(!background){glGenTextures(1,&background);hud_background=background;glBindTexture(GL_TEXTURE_2D,background);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,3840,2160,0,GL_RGBA,GL_UNSIGNED_BYTE,NULL);}
+ glBindTexture(GL_TEXTURE_2D,background);glCopyTexSubImage2D(GL_TEXTURE_2D,0,0,0,0,0,3840,2160);
+ glMatrixMode(GL_PROJECTION);glPushMatrix();glLoadIdentity();glOrtho(0,3840,2160,0,-1,1);glMatrixMode(GL_MODELVIEW);glPushMatrix();glLoadIdentity();glDisable(GL_DEPTH_TEST);glDisable(GL_BLEND);glDisable(GL_ALPHA_TEST);glEnable(GL_SCISSOR_TEST);obj_use(program);
+ active(0x84c2);glBindTexture(GL_TEXTURE_2D,background);uniform1(obj_location(program,"nativeBackground"),2);uniform1(obj_location(program,"candidateColor"),0);uniform1(obj_location(program,"candidateMetadata"),1);
+ uniform1(obj_location(program,"ownedText"),3);uniform1(obj_location(program,"ownedTextEnabled"),has_text);uniform1(obj_location(program,"ownedTextDistance"),4);uniform1(obj_location(program,"ownedTextSdfEnabled"),smooth_text);
+ int ok=1;GLuint color=0,meta=0,text=0;LARGE_INTEGER cpu_start,cpu_end,cpu_frequency;QueryPerformanceFrequency(&cpu_frequency);QueryPerformanceCounter(&cpu_start);
+ for(unsigned y=0;y<160;y++){
+  if(pool){if(!nf_hud_pool_row(pool,pool->bytes,pool->epoch,y,&row)){ok=0;break;}}else memcpy(&row,(const uint8_t*)data+y*sizeof(row),sizeof(row));
+  unsigned display=owned_hud_half(row.registers),blend=owned_hud_half(row.registers+0x50),alpha=owned_hud_half(row.registers+0x52),brightness=owned_hud_half(row.registers+0x54),priority=owned_hud_half(row.registers+0xc)&3;
+  if((display&0x8080)||((display&7)!=4)){ok=0;break;}
+  rows[y]=row;
+  if(has_text){
+   memcpy(text_indices,text_indices_data+y*240,240);memcpy(text_coverage,text_coverage_data+y*240,240);memcpy(hud_text_coverage+y*240,text_coverage,240);
+   for(unsigned x=0;x<240;x++)if(text_coverage[x]){
+    unsigned c=owned_hud_half(row.palette+2*text_indices[x]);
+    unsigned r=((c&31)<<3)|((c&31)>>2),g=((c>>5&31)<<3)|((c>>5&31)>>2),b=((c>>10&31)<<3)|((c>>10&31)>>2);
+    text_colors[y*240+x]=0xff000000u|(b<<16)|(g<<8)|r;
+   }
+  }
+  memcpy(vram+0x10000,row.obj_vram,sizeof(row.obj_vram));
+  uint16_t window[6];uint8_t controls[240],backdrop_controls[240];for(unsigned i=0;i<6;i++)window[i]=(uint16_t)owned_hud_half(row.registers+64+i*2);
+  if(!nf_obj_window_scanline_prepared(vram,sizeof(vram),row.palette,sizeof(row.palette),row.oam,sizeof(row.oam),display,y,window,blend,brightness,colors,tags,controls,backdrop_controls)){ok=0;break;}
+  hud_candidate_builds++;
+  memcpy(final_colors+y*240,colors,240*4);
+  for(unsigned x=0;x<240;x++){unsigned control=controls[x];if(!(display&0x400))control&=~4u;unsigned flags=128|control|((backdrop_controls[x]&32)?64:0);metadata[y*240+x]=0xff000000u|(flags<<16)|(tags[x]&3)|(((tags[x]>>2)&3)<<8);}
+ }
+ if(ok&&smooth_text){
+  LARGE_INTEGER sdf_begin,sdf_end;QueryPerformanceCounter(&sdf_begin);
+  if(!nf_hud_text_sdf_encode_scaled(hud_text_coverage,240,160,13.5f,hud_text_distance,sizeof(hud_text_distance)))ok=0;
+  QueryPerformanceCounter(&sdf_end);hud_text_sdf_ms+=(sdf_end.QuadPart-sdf_begin.QuadPart)*1000.0/cpu_frequency.QuadPart;hud_text_sdf_runs++;
+  /* The edge transition is narrower than one source texel. Extend nearest
+     foreground RGB into that border to avoid a transparent-index color fringe. */
+  if(ok)for(int y=0;y<160;y++)for(int x=0;x<240;x++)if(!hud_text_coverage[y*240+x]){
+   int best=4,best_at=-1;for(int dy=-1;dy<=1;dy++)for(int dx=-1;dx<=1;dx++){
+    int xx=x+dx,yy=y+dy;if(xx<0||xx>=240||yy<0||yy>=160||(!dx&&!dy))continue;int d=dx*dx+dy*dy,at=yy*240+xx;
+    if(hud_text_coverage[at]&&d<best){best=d;best_at=at;}
+   }if(best_at>=0)text_colors[y*240+x]=text_colors[best_at];
+  }
+ }
+ QueryPerformanceCounter(&cpu_end);hud_prepare_ms+=(cpu_end.QuadPart-cpu_start.QuadPart)*1000.0/cpu_frequency.QuadPart;
+ if(ok){active(0x84c0);color=preview_texture(240,160,(uint8_t*)final_colors);meta=preview_texture(240,160,(uint8_t*)metadata);if(!color||!meta)ok=0;if(has_text){text=preview_texture(240,160,(uint8_t*)text_colors);if(!text)ok=0;active(0x84c3);glBindTexture(GL_TEXTURE_2D,text);}if(ok&&smooth_text){active(0x84c4);int new_distance_texture=!hud_text_distance_texture;if(new_distance_texture)glGenTextures(1,&hud_text_distance_texture);glBindTexture(GL_TEXTURE_2D,hud_text_distance_texture);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,0x812f);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,0x812f);if(new_distance_texture)glTexImage2D(GL_TEXTURE_2D,0,GL_LUMINANCE,240,160,0,GL_LUMINANCE,GL_UNSIGNED_BYTE,hud_text_distance);else glTexSubImage2D(GL_TEXTURE_2D,0,0,0,240,160,GL_LUMINANCE,GL_UNSIGNED_BYTE,hud_text_distance);if(!hud_text_distance_texture)ok=0;active(0x84c3);}}
+ for(unsigned y=0;ok&&y<160;){
+  row=rows[y];hud_effect_batches++;unsigned blend=owned_hud_half(row.registers+0x50),alpha=owned_hud_half(row.registers+0x52),brightness=owned_hud_half(row.registers+0x54),priority=owned_hud_half(row.registers+0xc)&3;
+  unsigned end=y+1;
+  /* Batch only equal effect inputs; candidates already retain each exact row. */
+  while(end<160&&owned_hud_half(rows[end].palette)==owned_hud_half(row.palette)&&
+        (owned_hud_half(rows[end].registers+0xc)&3)==priority&&
+        !memcmp(rows[end].registers+0x50,row.registers+0x50,6))end++;
+  active(0x84c0);glBindTexture(GL_TEXTURE_2D,color);active(0x84c1);glBindTexture(GL_TEXTURE_2D,meta);
+  unsigned bd=owned_hud_half(row.palette);obj_uniform4(obj_location(program,"backdropColor"),((bd&31)<<3)|((bd&31)>>2),((bd>>5&31)<<3)|((bd>>5&31)>>2),((bd>>10&31)<<3)|((bd>>10&31)>>2),1);
+  obj_uniform4(obj_location(program,"effectParameters"),blend>>6&3,0,0,priority);obj_uniform4(obj_location(program,"firstTargets"),!!(blend&16),!!(blend&4),!!(blend&32),0);obj_uniform4(obj_location(program,"secondTargets"),!!(blend&4096),!!(blend&1024),!!(blend&8192),0);
+  unsigned ea=alpha&31,eb=alpha>>8&31,ey=brightness&31;obj_uniform4(obj_location(program,"coefficients"),ea>16?16:ea,eb>16?16:eb,ey>16?16:ey,0);
+  int top=(int)ceil(y*13.5-.5),bottom=(int)ceil(end*13.5-.5);glScissor(0,2160-bottom,3840,bottom-top);glBegin(GL_QUADS);glVertex2i(0,0);glVertex2i(3840,0);glVertex2i(3840,2160);glVertex2i(0,2160);glEnd();y=end;
+ }
+ obj_use(0);active(0x84c0);glMatrixMode(GL_MODELVIEW);glPopMatrix();glMatrixMode(GL_PROJECTION);glPopMatrix();glPopAttrib();if(ok)hud_drawn++;else hud_failed++;QueryPerformanceCounter(&total_end);owned_hud_total_ms+=(total_end.QuadPart-total_begin.QuadPart)*1000.0/cpu_frequency.QuadPart;owned_hud_calls++;return ok;
+}
+
+static unsigned hud_pool_draws,hud_pool_verified_rows;
+static uint64_t hud_pool_full_bytes,hud_pool_stored_bytes;
+static int owned_hud_gpu_draw(const void*data,size_t size,const uint8_t*indices,const uint8_t*coverage){
+ if(!getenv("NF_TEST_HUD_ROW_POOL"))return owned_hud_gpu_draw_rows(data,size,NULL,indices,coverage);
+ NFHudRowPool*pool=nf_hud_pool_create(data,size,1);if(!pool)return 0;
+ int ok=nf_hud_pool_valid(pool,pool->bytes,1);
+ /* Diagnostic independent full-row reference before GPU consumes pooled rows. */
+ if(ok&&getenv("NF_VERIFY_HUD_ROW_POOL")){for(unsigned y=0;y<160;y++){NFHudLayerRow row;if(!nf_hud_pool_row(pool,pool->bytes,1,y,&row)||memcmp(&row,(const uint8_t*)data+y*sizeof(row),sizeof(row))){ok=0;break;}hud_pool_verified_rows++;}}
+ if(ok)ok=owned_hud_gpu_draw_rows(data,size,pool,indices,coverage);
+ if(ok){hud_pool_draws++;hud_pool_full_bytes+=size;hud_pool_stored_bytes+=pool->bytes;}free(pool);return ok;
+}
+#endif
+

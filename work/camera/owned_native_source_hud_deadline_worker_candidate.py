@@ -1,0 +1,85 @@
+"""Bounded native owner-thread worker; caller owns game timing and sample selection."""
+import queue,threading,ctypes as C,hashlib,time
+from concurrent.futures import Future
+from owned_native_source_hud_deadline_session_candidate import NativeSourceSession,NativeFrameIdentityError
+class NativeSourceWorker:
+ def __init__(self,capacity=2):
+  if capacity<1:raise ValueError('capacity')
+  self.input_lock=threading.Lock();self.input_state=None;self.input_polls=0;self.input_poll_thread=None;self.jobs=queue.Queue(capacity);self.ready=threading.Event();self.error=None;self.closed=False;self.completed=0;self.thread=threading.Thread(target=self._run,name='NFSUG native source renderer');self.thread.start()
+  if not self.ready.wait(20):raise TimeoutError('native initialization still running')
+  if self.error:raise self.error
+ def input_snapshot(self):
+  with self.input_lock:
+   if self.closed or self.input_state is None:raise RuntimeError('Native input unavailable')
+   return self.input_state
+ def _poll_input(self,session):
+  assert threading.get_ident()==self.thread.ident
+  state=(C.c_uint32*4)()
+  if session.source.nf_owned_input_poll()!=1:raise RuntimeError('Native input polling failed')
+  if session.source.nf_owned_input_snapshot(state)!=1:raise RuntimeError('Native input snapshot failed')
+  with self.input_lock:
+   self.input_state=tuple(state);self.input_polls+=1;self.input_poll_thread=threading.get_ident()
+ def _put(self,item):
+  while True:
+   if self.error:raise self.error
+   if not self.thread.is_alive():raise RuntimeError('native worker stopped')
+   try:self.jobs.put(item,timeout=.1);return
+   except queue.Full:pass
+ def _submit(self,kind,owned,epoch,generation,index,diagnostic=False):
+  if self.closed:raise RuntimeError('native worker closed')
+  future=Future();self._put((kind,owned,epoch,generation,index,diagnostic,future));return future
+ def submit(self,owned,epoch,generation,index,diagnostic=False):return self._submit('draw',owned,epoch,generation,index,diagnostic)
+ def prepare(self,owned,epoch,generation,index,diagnostic=False):return self._submit('prepare',owned,epoch,generation,index,diagnostic)
+ def present(self,epoch,generation,index):return self._submit('present',None,epoch,generation,index)
+ def timed(self,owned,owner,epoch,generation,older,newer,index,alpha,deadline):return self._submit('timed',(owned,owner,older,newer,alpha,deadline),epoch,generation,index)
+ def abort(self,epoch,generation,index):return self._submit('abort',None,epoch,generation,index)
+ def _run(self):
+  session=None
+  try:
+   session=NativeSourceSession();session.source.nf_owned_input_snapshot.argtypes=[C.c_void_p];self._poll_input(session);self.ready.set()
+   while True:
+    self._poll_input(session)
+    try:job=self.jobs.get(timeout=.01)
+    except queue.Empty:continue
+    if job is None:break
+    kind,owned,e,g,i,diagnostic,future=job
+    try:
+     if kind=='timed':
+      draw,owner,older,newer,alpha,deadline=owned
+      draw_begin=time.perf_counter_ns();prepared=session.prepare(draw,e,g,i);draw_end=time.perf_counter_ns()
+      result=session.present_at_deadline(owner,e,g,older,newer,i,alpha,deadline)
+      result['prepared']=prepared
+      result['callback_timing']=dict(draw_begin_ns=draw_begin,draw_end_ns=draw_end)
+      if result['presentation']['status']!=-999:
+       result['callback_timing'].update(present_begin_ns=result['stages'][3],present_end_ns=result['stages'][4])
+      result['native_deadline_owner_thread']=threading.get_ident()
+     elif kind=='draw':result=session.draw(owned,e,g,i)
+     elif kind=='prepare':result=session.prepare(owned,e,g,i)
+     elif kind=='present':result=session.present(e,g,i)
+     elif kind=='abort':session.abort(e,g,i);result=None
+     else:raise ValueError('Unknown native job')
+     if diagnostic:
+      import numpy as np
+      rgba=C.create_string_buffer(3840*2160*4);assert session.consumer.d.nf_d3d_read(rgba,len(rgba))==0
+      rgb=np.frombuffer(rgba.raw,np.uint8).reshape(2160,3840,4)[:,:,:3];result['native_rgb_sha256']=hashlib.sha256(rgb.tobytes()).hexdigest()
+     self.completed+=1;future.set_result(result)
+    except NativeFrameIdentityError as error:future.set_exception(error)
+    except BaseException as error:future.set_exception(error);raise
+  except BaseException as error:self.error=error
+  finally:
+   if session is not None:
+    try:session.close()
+    except BaseException as error:self.error=error
+   with self.input_lock:self.input_state=None
+   self.ready.set()
+   while True:
+    try:job=self.jobs.get_nowait()
+    except queue.Empty:break
+    if job is not None:job[-1].set_exception(self.error or RuntimeError('native worker stopped'))
+ def close(self):
+  if self.closed:return
+  self.closed=True
+  if self.thread.is_alive() and not self.error:self._put(None)
+  self.thread.join(20)
+  if self.thread.is_alive():raise TimeoutError('native worker close still running')
+  if self.error:raise self.error

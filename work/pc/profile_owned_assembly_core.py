@@ -1,0 +1,15 @@
+from pathlib import Path
+import os,subprocess,json,hashlib,shutil
+source=Path(__file__).resolve().parent;root=source.parent.parent;base=Path(r'C:\NFSUG-Workspace');out=base/'NFSUG-pc-live-host-tests';experiment=base/'NFSUG-pc-owned-assembly-core-tests';normal=base/'NFSUG-android-background-jni-native-local/capture-host.dll';env=dict(os.environ)
+for key in ['NF_TEST_RACING_OWNED_CAPTURE','NF_LIVE_ROAD_ATTRIBUTES','NF_CAPTURE_MODEL_VIEWS']:env.pop(key,None)
+def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
+receipt=json.loads((experiment/'owned-core-test-report.json').read_text());assert receipt['core_sha256']==sha(experiment/'capture-host.dll') and receipt['baseline_core_sha256']==sha(normal)
+rom=root.parent/'Need for Speed - Underground (USA, Europe) (En,Fr,De,It).gba';state=root/'work/integration-0.state';before={str(p):sha(p) for p in [rom,state]};cases={}
+try:
+ for name,core in [('assembly-normal',normal),('assembly-owned',experiment/'capture-host.dll')]:
+  shutil.copy2(core,out/'capture-host.dll');cmd=[str(out/'NFSUG-Source-Native-Preview.exe'),'--rom',str(rom),'--state',str(state),'--hidden','--script','--frames','1200','--report',str(out/f'{name}.json'),'--audio-dump',str(out/f'{name}.pcm')];subprocess.run(cmd,env=env,check=True,timeout=90);r=json.loads((out/f'{name}.json').read_text());assert r['logic_frames']==1200 and r['timing_errors']==0 and r['present_failures']==0 and r['prepare_failures']==0 and r['native_renders']>0 and r['single_build_reader'] and r['audio_dropped_frames']==0;assert sha(out/f'{name}.pcm')=='84d8e27f4ecdf97eff82a279523a546331d31c7c03b2b6f5723462d485ec08be';r['core_sha256']=sha(core);cases[name]=r;print(name,json.dumps(r),flush=True)
+finally:shutil.copy2(experiment/'capture-host.dll',out/'capture-host.dll')
+assert before=={str(p):sha(p) for p in [rom,state]}
+baseline=cases['assembly-normal'];optimized=cases['assembly-owned'];assert optimized['phases']['source_capture']['mean_ms']<baseline['phases']['source_capture']['mean_ms'];ideal=1200*280896/16777216;assert ideal<=optimized['elapsed_seconds']<=ideal+.1,('Residual timing drift',ideal,optimized['elapsed_seconds'])
+b=dict(result='PASS_OWNED_ASSEMBLY_LIVE_PROFILE_PCM_EXACT',frames=1200,ideal_seconds=ideal,baseline_seconds=baseline['elapsed_seconds'],owned_seconds=optimized['elapsed_seconds'],capture_mean_reduction_percent=100*(1-optimized['phases']['source_capture']['mean_ms']/baseline['phases']['source_capture']['mean_ms']),exe_sha256=sha(out/'NFSUG-Source-Native-Preview.exe'),baseline_core_sha256=sha(normal),core_sha256=sha(out/'capture-host.dll'),audio_frames=optimized['audio_frames'],audio_sha256=sha(out/'assembly-owned.pcm'),core_parity_receipt_sha256=sha(experiment/'owned-core-test-report.json'),test_source_sha256=sha(Path(__file__)),rom_state_sha256=before,gpu_metrics_are_cpu_submission_times=True,full_scene_60fps=False,cases=cases)
+(out/'owned-assembly-profile-report.json').write_text(json.dumps(b,indent=2));print(json.dumps({k:v for k,v in b.items() if k!='cases'},indent=2))

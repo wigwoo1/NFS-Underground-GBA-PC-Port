@@ -1,0 +1,10 @@
+package org.codex.nfsugpreview;
+import java.nio.*;import java.nio.file.*;
+public class LitWallMaterialTest {public static void main(String[] args)throws Exception{long texels=0;int walls=0,visible=0;long[] statesSeen=new long[3];
+ try(DirectoryStream<Path> files=Files.newDirectoryStream(Paths.get(args[0]),"*.nsp")){for(Path file:files){NativeScenePacket packet=new NativeScenePacket(1,Files.readAllBytes(file));NativeWorldScene world=new NativeWorldScene(packet);NativeSceneDrawPlan plan=new NativeSceneDrawPlan(packet);if(plan.count()!=world.commandCount())throw new AssertionError();
+ for(int i=0;i<world.surfaceCount();i++){NativeWorldScene.Surface surface=world.surface(i);if(!surface.lit)continue;NativeWorldMesh mesh=new NativeWorldMesh(packet,world,i);NativeLitWall wall=new NativeLitWall(packet,world,i,mesh);walls++;if(mesh.triangleVertices>0)visible++;int pixels=surface.width*surface.height;ByteBuffer states=surface.states(),indices=surface.originalIndices(),light=surface.lighting();
+ for(int level=0;level<16;level++){ByteBuffer image=wall.variant(level);if(!image.isDirect()||!image.isReadOnly()||image.remaining()!=pixels*4)throw new AssertionError("Variant ownership");for(int pixel=0;pixel<pixels;pixel++){int state=states.get((level+1)*pixels+pixel)&255;statesSeen[state]++;int alpha=state==0?0:state==1?128:255;if((image.get(pixel*4+3)&255)!=alpha)throw new AssertionError("Classification");
+ if(indices!=null){if(image.get(pixel*4)!=indices.get((level+1)*pixels+pixel)||image.get(pixel*4+1)!=0||image.get(pixel*4+2)!=0)throw new AssertionError("Mapped index");}else for(int c=0;c<3;c++)if(image.get(pixel*4+c)!=light.get(20+(level*pixels+pixel)*4+c))throw new AssertionError("Lighting RGB");texels++;}}
+ }}}
+ if(walls!=14||visible==0||statesSeen[0]==0||statesSeen[1]==0||statesSeen[2]==0)throw new AssertionError("Missing cases");System.out.println("PASS_LIT_WALL_MATERIAL walls="+walls+" visible="+visible+" exact_variant_texels="+texels+" states="+java.util.Arrays.toString(statesSeen));
+ }}

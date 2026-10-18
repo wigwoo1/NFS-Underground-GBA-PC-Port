@@ -1,0 +1,23 @@
+# NFSUG steering accumulator path — disassembly note
+
+This note records a ROM-backed control-flow observation, not a native implementation. The input ROM was read only and matched SHA-256 `53817AEC76A623DC2C7782DDF841F89F369AEBE5A92A28C9AFC69FEAF914A593`.
+
+## Verified instruction path
+
+- At `0x08009730`, a nonzero `r0` path calls `0x08008C94` with the current stack, object, and input-related arguments; its return is copied from `r0` to `r7` at `0x08009740`. The isolated checkpoint tested below kept `r0 == 0`, so this helper path was not entered.
+- The direct-input path tests masks `0x20` and `0x10` in `r5`. Each branch gates whether a signed per-update delta is selected based on the current value at `[r6 + 0x2C]` and a literal threshold: `-0x80000` with step `-0xC800` (−51200), and `0x7FFFF` with step `+0xC800` (+51200). Opposite-direction input first resets a crossed-sign accumulator to zero. These are step gates, not exact clamps: because the selected delta is added later, the sampled race state reached `-563200` and `+563200`, one 51200-unit update past the thresholds. The sampler at `0x080097EE` reads the accumulator before that instruction adds `r7`.
+- At `0x080097AA`, the chosen `r2` step is copied to `r7`. At `0x080097EE..0x080097F2`, the game loads `[r6 + 0x2C]`, adds `r7`, and stores the result back. Thus this field is an accumulated signed steering-control quantity, with the thresholds and step above expressed in the original integer representation.
+- Immediately before the accumulator write, `0x080097B4..0x080097E2` takes a three-component dot product from vectors at `r6 + 0x134` and `r6 + 0x158`, arithmetic-shifts each product by 12, sums them, shifts the sum by 5, and stores it to a stack temporary and the pointer in `r8`. Its downstream physical interpretation is not established by this note.
+
+## Timing experiment boundary
+
+The existing probe hook at `0x080097EE` scales `r7` by measured cycles divided by `4 * 280896`, an experimental delta normalization around a four-refresh reference period. It modifies mGBA's live CPU register; it is not a standalone steering subsystem and does not establish correct behavior for all cars, surfaces, collisions, or frame schedules. The large helper at `0x08008C94` remains unresolved and has to be followed before using it as a native model. It was not reached in the tested saved race state: `r0` was zero at `0x08009730` for all sampled frames.
+
+## Remaining game-code work
+
+Recover the helper's tuning-table and fixed-point inputs; trace the call-site condition and input masks under both directions and analog/Xbox inputs; implement and compare this steering component independently; then continue through throttle, braking, tire forces, collision, world updates, AI, race flow, and game-state/menu transitions. The renderer tryout package still relies on mGBA for all of these behaviors. No original ROM code has yet been ported to the host as an operational standalone game loop.
+## Read-only runtime trace follow-up (2026-10-12)
+
+- The earlier empty `nf_debug` capture was a hook mismatch: register sampling existed only in the ARM observer, while these routine addresses execute in Thumb mode. A scratch-only bridge variant adds the same read-only register/memory snapshot to `thumbTrace`; it is built at `work/logic/thumbtrace-diagnostic/nfsprobe.dll` and is not the tryout or release DLL.
+- Using a copy of the diagnostic driving state, 120 `nf_frame` calls per held-input scenario produced 30 left+accelerator samples, 31 right+accelerator samples, and 33 accelerator-only samples at both `0x08009730` and `0x080097EE`. `r0` was zero at every `0x08009730` sample and the helper entry/return addresses had zero samples. The observed `r7` deltas were `-51200/0`, `+51200/0`, and `0`, respectively. The accumulator before the add reached `-563200` and `+563200`, confirming one-update overshoot of its threshold.
+- An inline assertion check passed these sample counts, branch values, helper non-entry, and acceleration-only zero steering change. This resolves the direct digital-input subpath for this saved state, but it does not resolve the helper's nonzero-`r0` call condition or prove other car/mode behavior. The next dependency is a safe, identified state where `r0` is nonzero at `0x08009730`, then paired captures of helper inputs/return and the following dynamics. Do not use this trace alone to write a native steering subsystem.

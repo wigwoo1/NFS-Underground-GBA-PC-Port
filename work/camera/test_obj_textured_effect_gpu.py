@@ -1,0 +1,4 @@
+from pathlib import Path
+import subprocess,json,numpy as np
+p=Path('work/camera').resolve();source=p/'obj-effect-gpu-input.bin';target=p/'obj-textured-effect-gpu.rgba';ref=p/'obj-textured-effect-cpu.rgba';log=subprocess.check_output([str(p/'obj-effect-gpu.exe'),str(source),str(target),'--textured'],text=True);subprocess.check_call([str(p/'obj-cpu-effect-grid.exe'),str(source),str(ref)]);actual=np.fromfile(target,np.uint32).reshape(2160,3840)[::-1]&0xffffff;expected=np.fromfile(ref,np.uint32).reshape(2160,3840)&0xffffff;diff=actual!=expected;assert not diff.any(),(int(diff.sum()),np.argwhere(diff)[:8].tolist());r=dict(result='PASS',cases=1024,checked_target_pixels=3840*2160,scope='Textured transparent candidates composed over independently GPU-rendered4Kgradient and separate retained background texture; exact native CPU oracle, not live scene integration',gpu=log.strip());(p/'obj-textured-effect-tests.json').write_text(json.dumps(r,indent=2));print(r)
+

@@ -1,0 +1,3 @@
+from owned_source_draw_type_reuse_candidate import OwnedSourceDraw
+import owned_source_segmented_draw_candidate as module
+module.OwnedSourceDraw=OwnedSourceDraw

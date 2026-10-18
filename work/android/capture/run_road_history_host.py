@@ -1,0 +1,7 @@
+from pathlib import Path
+import runpy,struct,subprocess,json,hashlib
+root=Path(r'Y:\CODEX\NFSUG-Native-PC-Port');scope=runpy.run_path(str(root/'work/android/capture/verify_road_event_history.py'));folder=scope['folder'];capture=scope['capture'];states=scope['states'];parts=[struct.pack('<I',len(capture['road_records']))];checked=0
+for record in capture['road_records']:
+ owner=record['owner'];entries=sorted((cell,value) for (page,cell),value in states[owner['serial']].items() if page==owner['page']);parts.append(struct.pack('<IQII',owner['serial'],owner['end'],owner['page'],len(entries)))
+ for cell,(value,event,refresh,offset) in entries:parts.append(struct.pack('<IQIII',cell,event,refresh,offset,value));checked+=1
+(folder/'road-history-reference.bin').write_bytes(b''.join(parts));java=root/'work/android/java/org/codex/nfsugpreview/NativeRoadHistory.java';test=root/'work/android/tests/org/codex/nfsugpreview/RoadHistoryTest.java';classes=folder/'history-classes';classes.mkdir(exist_ok=True);jdk=Path(r'C:\NFSUG-Workspace\android-tools\jdk-21.0.12.1+1');subprocess.run([str(jdk/'bin/javac.exe'),'--release','8','-d',str(classes),str(java),str(test)],check=True);r=subprocess.run([str(jdk/'bin/java.exe'),'-cp',str(classes),'org.codex.nfsugpreview.RoadHistoryTest',str(folder)],check=True,capture_output=True,text=True);print(r.stdout);(folder/'road-history-java-report.json').write_text(json.dumps(dict(result=r.stdout.strip(),addresses=checked,java_sha256=hashlib.sha256(java.read_bytes()).hexdigest(),android_runtime=False,gpu=False),indent=2))

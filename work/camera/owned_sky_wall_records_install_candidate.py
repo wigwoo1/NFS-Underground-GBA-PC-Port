@@ -1,0 +1,98 @@
+import ctypes as C,hashlib,json,time,threading,os
+from pathlib import Path
+import owned_native_source_segmented_release_worker_candidate as worker
+Session=worker.NativeSourceWorker._run.__globals__['NativeSourceSession'];original_prepare=Session.prepare;original_present=Session.present
+folder=Path('work/camera/prototype-runs')/('owned-sky-wall-records-'+str(time.time_ns()));folder.mkdir()
+CAPTURE_START=int(os.environ.get('NFSUG_SKY_CAPTURE_START','120'));assert 1<=CAPTURE_START<=10000
+CAPTURE_END=CAPTURE_START+48
+capture_input=None
+rows=[];slots={};count=0;missed=[];not_ready=0
+buffers=[C.create_string_buffer(3240*64*4) for _ in range(9)];plane=C.create_string_buffer(240*160*4)
+def prepare(self,owned,epoch,generation,index):
+ global count,not_ready,capture_input
+ d=self.consumer.d;d.nf_d3d_async_skyband_capture.argtypes=[C.c_uint,C.c_uint64,C.c_uint];d.nf_d3d_async_skyband_poll.argtypes=[C.c_uint,C.c_uint64,C.c_void_p,C.c_size_t];d.nf_d3d_sky_input_copy.argtypes=[C.c_uint,C.c_void_p,C.c_size_t]
+ for slot,row in list(slots.items()):
+  start=time.perf_counter_ns();rc=d.nf_d3d_async_skyband_poll(slot,row['capture_id'],buffers[slot],len(buffers[slot]));end=time.perf_counter_ns();assert rc in (0,3)
+  if rc==3:not_ready+=1;continue
+  data=buffers[slot].raw;(folder/row['pixel_file']).write_bytes(data)
+  row.update(poll_begin_ns=start,poll_end_ns=end,poll_thread=threading.get_ident(),pixel_sha256=hashlib.sha256(data).hexdigest());del slots[slot]
+ available=next((slot for slot in range(9) if slot not in slots),None)
+ if CAPTURE_START<=count+1<CAPTURE_END:
+  assert available is not None
+  y=[648,810,972,1134,1296,1440][(count+1-CAPTURE_START)//8]
+  d.nf_d3d_sky_stage_arm.argtypes=[C.c_uint,C.c_uint64,C.c_uint]
+  assert d.nf_d3d_sky_stage_arm(available,count+1,y)==0
+  world_slot=next(slot for slot in range(9) if slot not in slots and slot!=available)
+  d.nf_d3d_world_stage_arm.argtypes=[C.c_uint,C.c_uint64,C.c_uint];assert d.nf_d3d_world_stage_arm(world_slot,count+1,y)==0
+ if CAPTURE_START<=count+1<CAPTURE_END:
+  draw=owned.context.draw
+  prefix=owned.frame.prefix if getattr(owned,'segmented',False) else owned.frame[:40+int.from_bytes(owned.frame[8:12],'little')]
+  assert len(prefix)<=8*1024*1024+40
+  capture_input=dict(source_prefix=np.frombuffer(prefix,dtype=np.uint8).copy(),camera=np.frombuffer(C.string_at(draw.camera,12*8),dtype='<f8').copy(),source_bounds=np.frombuffer(C.string_at(draw.bounds,draw.count*4*8),dtype='<f8').reshape(draw.count,4).copy(),raw_camera_a=np.frombuffer(C.string_at(owned.context.a,48),dtype='<i4').copy(),raw_camera_b=np.frombuffer(C.string_at(owned.context.b,48),dtype='<i4').copy(),rigid_camera_a=np.frombuffer(C.string_at(owned.context.ra,96),dtype='<f8').copy(),rigid_camera_b=np.frombuffer(C.string_at(owned.context.rb,96),dtype='<f8').copy(),source_alpha=np.array([owned.context.alpha],dtype='<f8'))
+ result=original_prepare(self,owned,epoch,generation,index);capture_input=None;count+=1
+ if CAPTURE_START<=count<CAPTURE_END:
+  available=next((slot for slot in range(9) if slot not in slots),None)
+  if available is None:missed.append(dict(prepare=count,index=index));return result
+  assert self.pending==(epoch,generation,index) and list(result['publication'][:3])==[epoch,generation,index]
+  sequence=count-CAPTURE_START;y=[648,810,972,1134,1296,1440][sequence//8];begin=time.perf_counter_ns();stage_info=(C.c_uint64*4)();stage_phase=C.c_double();d.nf_d3d_sky_stage_info.argtypes=[C.c_void_p,C.c_void_p];assert d.nf_d3d_sky_stage_info(stage_info,C.byref(stage_phase))==0;assert list(stage_info[:3])==[available,count,y];end=time.perf_counter_ns()
+  row=dict(epoch=epoch,generation=generation,index=index,capture_id=count,sequence=sequence,y=y,x=300,width=3240,height=64,capture_begin_ns=begin,capture_end_ns=end,thread=threading.get_ident(),backend=Path(d._name).name,publication=list(result['publication']),sky_weight=stage_phase.value,context_sky_weight=owned.context.draw.weight,sky_stage_capture_ns=stage_info[3],pixel_file=str(sequence)+'.rgba',present=None)
+  for input_slot in range(2):
+   assert d.nf_d3d_sky_input_copy(input_slot,plane,len(plane))==0;data=plane.raw;(folder/(str(sequence)+'.input'+str(input_slot)+'.rgba')).write_bytes(data);row['input'+str(input_slot)+'_sha256']=hashlib.sha256(data).hexdigest()
+  rows.append(row);slots[available]=row
+  world_info=(C.c_uint64*4)();d.nf_d3d_world_stage_info.argtypes=[C.c_void_p];assert d.nf_d3d_world_stage_info(world_info)==0;assert list(world_info[:3])==[world_slot,count,y]
+  world=dict(capture_id=count,index=index,epoch=epoch,generation=generation,y=y,pixel_file=str(sequence)+'.world.rgba',capture_ns=world_info[3],thread=threading.get_ident())
+  row['world_capture']=world;slots[world_slot]=world
+  final_slot=next((slot for slot in range(9) if slot not in slots),None);assert final_slot is not None
+  final_begin=time.perf_counter_ns();assert d.nf_d3d_async_skyband_capture(final_slot,count,y)==0;final_end=time.perf_counter_ns()
+  final=dict(capture_id=count,index=index,epoch=epoch,generation=generation,y=y,pixel_file=str(sequence)+'.final.rgba',capture_begin_ns=final_begin,capture_end_ns=final_end,thread=threading.get_ident())
+  row['final_capture']=final;slots[final_slot]=final
+ return result
+def present(self,epoch,generation,index):
+ result=original_present(self,epoch,generation,index)
+ row=next((r for r in rows if (r['epoch'],r['generation'],r['index'])==(epoch,generation,index)),None)
+ if row is not None:row['present']=dict(status=result['status'],thread=threading.get_ident(),completed_ns=time.perf_counter_ns())
+ return result
+Session.prepare=prepare;Session.present=present
+from owned_native_source_timed_commit_adapter_candidate import NativeSourceCommitAdapter
+original_run=NativeSourceCommitAdapter.run
+def run(self,owned,epoch,generation,older,newer,index,alpha,deadline,**kwargs):
+ result=original_run(self,owned,epoch,generation,older,newer,index,alpha,deadline,**kwargs)
+ row=next((r for r in rows if (r['epoch'],r['generation'],r['index'])==(epoch,generation,index)),None)
+ if row is not None:
+  assert 'commit' not in row;row.update(source_older=older,source_newer=newer,alpha=alpha,deadline_ns=deadline,native_result=result['native_result'],commit=result['commit'])
+ return result
+NativeSourceCommitAdapter.run=run
+def save():
+ (folder/'manifest.json').write_text(json.dumps(dict(rows=rows,missed=missed,pending=len(slots),not_ready=not_ready,total_prepares=count,scope='48 attempted captures in6bands,6reusable slots,48paired stage/final captures. Nonblocking native poll; file writing and copies still perturb timing. No skyexclusive/scanout proof.'),indent=2));print('ASYNC_SKYBAND_MANIFEST',folder/'manifest.json',flush=True)
+
+# Snapshot actual consumer buffers before source packets close, no draw mutation.
+import numpy as np
+from owned_uncovered_window_candidate import OwnedD3DConsumer
+original_render=OwnedD3DConsumer.render
+packet_snapshots={}
+def render(self,source,*args,**kwargs):
+ result=original_render(self,source,*args,**kwargs)
+ if CAPTURE_START<=count+1<CAPTURE_END:
+  stats=(C.c_uint*3)();source.nf_source_packets_stats(stats);nv,nd,_=stats
+  assert nv<=65536 and nd<=4096
+  sequence=count+1-CAPTURE_START;name=str(sequence)+'.world.npz'
+  ts=(C.c_uint*2)();assert source.nf_source_texture_stats(ts)==0;nt,nb=ts
+  assert nt<=64 and nb<=16*1024*1024
+  # Source packets remain open here. Copy exact frame-local materials before close.
+  assert source.nf_source_texture_copy(self.texture_scratch,nb,self.texture_records,nt*16,self.texture_ids,nd*4)==0
+  provenance=(C.c_uint32*(nd*4))();source.nf_source_draw_provenance_copy.argtypes=[C.c_void_p,C.c_size_t]
+  assert source.nf_source_draw_provenance_copy(provenance,C.sizeof(provenance))==0
+  arrays=dict(provenance=np.frombuffer(provenance,dtype='<u4').reshape(nd,4).copy(),vertices=self.vertex_float[:nv].copy(),offsets=np.frombuffer(C.string_at(self.offset_scratch,(nd+1)*4),dtype='<u4').copy(),texture_ids=np.frombuffer(C.string_at(self.texture_ids,nd*4),dtype='<u4').copy(),states=np.frombuffer(C.string_at(self.state_scratch,nd*72),dtype=np.uint8).reshape(nd,72).copy(),texture_records=np.frombuffer(C.string_at(self.texture_records,nt*16),dtype='<u4').reshape(nt,4).copy(),texture_rgba=np.frombuffer(C.string_at(self.texture_scratch,nb),dtype=np.uint8).copy())
+  assert capture_input is not None;arrays.update(capture_input)
+  assert all(1<=int(t)<=nt for t in arrays['texture_ids'])
+  for w,h,offset,size in arrays['texture_records']:
+   assert int(size)==int(w)*int(h)*4 and int(offset)+int(size)<=nb
+  # Bounded 48 snapshots; defer NPZ serialization until the runtime has ended.
+  packet_snapshots[sequence]=dict(file=name,vertices=nv,draws=nd,textures=nt,texture_bytes=nb,arrays=arrays)
+ return result
+OwnedD3DConsumer.render=render
+original_save=save
+def save():
+ for row in rows:
+  packet=packet_snapshots[row['sequence']];arrays=packet.pop('arrays');np.savez(folder/packet['file'],**arrays);packet['sha256']=hashlib.sha256((folder/packet['file']).read_bytes()).hexdigest();row['world_packets']=packet
+ original_save()

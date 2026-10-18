@@ -1,0 +1,2 @@
+import csv,statistics
+r=list(csv.DictReader(open('work/presentation/frames.csv')))[15:];t=[float(x['seconds'])for x in r];ds=[b-a for a,b in zip(t,t[1:])];new=sum(a['hash']!=b['hash']for a,b in zip(r,r[1:]));print({'presentations':len(r),'seconds':t[-1]-t[0],'changed_images':new,'new_image_fps':new/(t[-1]-t[0]),'median_ms':statistics.median(ds)*1000,'p95_ms':sorted(ds)[int(len(ds)*.95)]*1000,'max_ms':max(ds)*1000})

@@ -1,0 +1,7 @@
+import json
+from pathlib import Path
+r=json.loads(Path('work/camera/prototype-runs/owned-native-1791413037029369400.json').read_text());st=r['world_preparation_stage_samples'];result=[]
+for metric in ('precompute_ns','encode_ns'):
+ for x in sorted(st,key=lambda x:x['child_stages'][metric],reverse=True)[:3]:
+  c=x['child_stages'];samples=c.get('sample_timings',[]);result.append(dict(metric=metric,older=x['older'],newer=x['newer'],wall_ms=c[metric]/1e6,child_cpu_ms=c['child_thread_cpu_ns']/1e6,encode=[dict(alpha=v['alpha'],wall_ms=(v['completed_ns']-v['started_ns'])/1e6,frame_bytes=v['frame_bytes'],tail_index=v['tail_index']) for v in c.get('encode_samples',[])],samples=[dict(alpha=v['alpha'],wall_ms=v['wall_ns']/1e6,stages=[dict(name=t['name'],wall_ms=t['wall_ns']/1e6) for t in v.get('source_sample_stages',[])]) for v in samples],gc=[dict(generation=g['generation'],wall_ms=(g['end_ns']-g['start_ns'])/1e6,collected=g['collected']) for g in c.get('child_gc_rows',[]) if g['end_ns']-g['start_ns']>5000000]))
+cp=Path('outputs/nfsug-native-renderer/camera-research/checkpoints/source-shared-child-outliers-20261007');cp.mkdir(exist_ok=True);(cp/'result.json').write_text(json.dumps(dict(result='MEASURED',outliers=result,scope='Previously recorded source shared worker child stages; nested timing and GC overlaps not exclusive additive costs or post-reuse live evidence.'),indent=2));(cp/Path(__file__).name).write_bytes(Path(__file__).read_bytes());print(json.dumps(result[:2]))

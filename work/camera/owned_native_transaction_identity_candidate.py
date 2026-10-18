@@ -1,0 +1,20 @@
+"""Check complete current native callback rows before diagnostic eviction."""
+import struct
+
+def validate(row):
+ result=row['native_result']
+ if result not in (-1,0,1):raise ValueError('Unknown native result')
+ if row.get('prepared') and row['prepared']['publication'][:3]!=[row['epoch'],row['generation'],row['display_index']]:raise ValueError('Prepared identity mismatch')
+ if result!=1:
+  if row['native_committed_sample'] is not None:raise ValueError('Cancelled frame has commit')
+  return
+ commit=row['native_committed_sample'];expected=[row['epoch'],row['generation'],row['source_older'],row['refresh'],row['display_index']]
+ if not commit or commit!=row['commit'] or commit[:5]!=expected:raise ValueError('Native commit identity mismatch')
+ if commit[5]!=struct.unpack('<Q',struct.pack('<d',row['alpha']))[0]:raise ValueError('Native commit alpha mismatch')
+ if row['presentation']['status']!=0:raise ValueError('Successful commit without S_OK')
+ t=row['callback_timing']
+ tx=row['native_transaction'];d=tx['renderer_dispatch'];st=tx['stages'];ps=tx['presentation']['present_stage_ns'];wait=tx['wait']
+ if not row['transaction_begin_ns']<=t['draw_begin_ns']<=t['draw_end_ns']<=t['present_begin_ns']<=d['submitted_ns']<=d['started_ns']<=tx['transaction_begin_ns']<=wait[0]<=wait[2]<=st[0]<=st[1]<=st[2]<=st[3]<=ps['begin']<=ps['pumped']<=ps['presented']<=ps['queried']<=st[4]<=commit[6]<=st[5]<=st[6]<=tx['transaction_end_ns']<=d['completed_ns']<=t['present_end_ns']<=row['transaction_end_ns']:raise ValueError('Native transaction order mismatch: '+repr(dict(caller=t,dispatch=d,wait=wait,stages=st,present=ps,commit=commit,inner=(tx['transaction_begin_ns'],tx['transaction_end_ns']),outer=(row['transaction_begin_ns'],row['transaction_end_ns']))))
+ if wait[1]!=row['presentation_deadline_ns'] or wait[2]<wait[1]:raise ValueError('Native transaction deadline mismatch')
+ if tx['native_callback_count']!=1 or tx['native_batch_result']!=0 or tx['commit']!=commit:raise ValueError('Native transaction callback/commit mismatch')
+ if commit[6]<row['presentation_deadline_ns']:raise ValueError('Commit before original display deadline')

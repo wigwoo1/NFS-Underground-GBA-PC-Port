@@ -1,0 +1,7 @@
+import json
+from pathlib import Path
+r=json.loads(Path('work/camera/prototype-runs/owned-native-1791421911515525700.json').read_text());cp=Path('outputs/nfsug-native-renderer/camera-research/checkpoints/playable-launcher-minute-20261007');g=json.loads((cp/'gap-partition.json').read_text());rows={x['display_index']:x for x in r['presentation_samples'] if x.get('interpolated')};out=[]
+for gap in g['largest']:
+ x=rows[gap['display_index']];candidates=[p for p in r['world_preparation_stage_samples'] if p['older']==x['source_older'] and p['newer']==x['refresh'] and p['completed_ns']<=x['pair_ready_ns']];assert candidates
+ p=max(candidates,key=lambda p:p['completed_ns']);out.append(dict(display_index=x['display_index'],older=x['source_older'],newer=x['refresh'],gap_ms=gap['gap_ms'],pair_acquisition_ms=(x['pair_ready_ns']-x['pair_begin_ns'])/1e6,unfinished_ms=max(0,p['completed_ns']-x['pair_begin_ns'])/1e6,ready_before_acquire_ms=max(0,x['pair_begin_ns']-p['completed_ns'])/1e6,completion_to_acquired_ms=(x['pair_ready_ns']-p['completed_ns'])/1e6,construct_ms=p['construct_advance_ns']/1e6,precompute_ms=p['precompute_ns']/1e6,preparation_stages=p))
+(cp/'readiness.json').write_text(json.dumps(dict(result='JOINED',records=out,scope='Preparation readiness joined to actual queued launcher23stalls; overlapping intervals not exclusive CPU costs or scheduler causality.'),indent=2));print(json.dumps([{k:v for k,v in x.items() if k!='preparation_stages'} for x in out[:5]],indent=2))

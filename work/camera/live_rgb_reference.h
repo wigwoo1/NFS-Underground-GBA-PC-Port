@@ -1,0 +1,2 @@
+/* Diagnostic only: compare bottom-up live RGB with offline RGBA replay. */
+static int nf_live_rgb_reference(const unsigned char*rgba,size_t pixels){const char*path=getenv("NF_TEST_LIVE_RGB_REFERENCE");if(!path)return 1;FILE*f=fopen(path,"rb");if(!f)return 0;unsigned char rgb[3];int ok=1;for(size_t i=0;i<pixels;i++){if(fread(rgb,1,3,f)!=3||memcmp(rgb,rgba+i*4,3)){printf("live_rgb_mismatch_pixel=%llu\n",(unsigned long long)i);ok=0;break;}}if(ok&&fgetc(f)!=EOF)ok=0;fclose(f);if(ok)printf("live_rgb_reference_exact_pixels=%llu\n",(unsigned long long)pixels);return ok;}

@@ -1,0 +1,10 @@
+from pathlib import Path
+p=Path('work/host.c');s=p.read_text();s=s.replace('Internal rendering remains 240x160, about 14-15 scene fps.\\nA 4K display is supported through upscaling only.\\nNative 4K geometry and 60-fps gameplay are not implemented.','Road, car and scenery use a 3840x2160 GPU render target.\\nHUD and unsupported effects retain original resolution.\\nGame logic still runs in mGBA at original timing.\\n60-fps gameplay and a fully native port remain in development.')
+s=s.replace('F2: experimental native span routine\\n','F3: 4K geometry / original image\\nF2: experimental native span routine\\n')
+s=s.replace('NFSUG Port Lab | internal 240x160 | F1 controls','NFSUG Native Renderer | 4K geometry experiment | F1 controls')
+s=s.replace('NFSUG Port Lab | %s | internal 240x160 | scene %.1f fps','NFSUG Native Renderer | %s | scene %.1f fps')
+s=s.replace('native_mode?"native span experiment":"reference renderer",scenes/', 'gpu_ready&&gpu_mode?"4K geometry":"original 240x160",scenes/')
+s=s.replace('F1 controls  F2 renderer  F5 save  F8 load  F11 fullscreen','F1 controls  F3 compare  F5 save  F8 load  F11 fullscreen')
+s=s.replace('\\"internal_width\\":240,\\"internal_height\\":160,', '\\"render_target_width\\":%d,\\"render_target_height\\":%d,\\"native_geometry\\":%s,\\"captured_polygons\\":%d,')
+s=s.replace('nf_native_rejected(),errors,getpad?', 'nf_native_rejected(),errors,gpu_ready?3840:240,gpu_ready?2160:160,gpu_ready&&gpu_mode?"true":"false",gpu_ready?nf_gpu_polygon_count():0,getpad?')
+p.write_text(s)

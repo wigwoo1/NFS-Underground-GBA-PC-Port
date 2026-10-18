@@ -1,0 +1,9 @@
+package org.codex.nfsugpreview;
+import java.nio.*;import java.nio.file.*;
+public class TexturePlaneTest {public static void main(String[] args)throws Exception{int triangles=0,samples=0;double max=0;
+ try(DirectoryStream<Path> files=Files.newDirectoryStream(Paths.get(args[0]),"*.nsp")){for(Path file:files){if(file.getFileName().toString().startsWith("bad-"))continue;NativeSceneDrawPlan plan;try{plan=new NativeSceneDrawPlan(new NativeScenePacket(1,Files.readAllBytes(file)));}catch(IllegalArgumentException skip){continue;}
+ for(int di=0;di<plan.count();di++){FloatBuffer v=plan.draw(di).mesh();for(int vertex=0;vertex<plan.draw(di).vertices;vertex+=3){NativeTexturePlane plane=new NativeTexturePlane(v,vertex);triangles++;int at=vertex*5;
+ for(int sample=1;sample<20;sample++){double a=sample/21.0,b=(1-a)*.37,c=1-a-b;float x=(float)(a*v.get(at)+b*v.get(at+5)+c*v.get(at+10)),y=(float)(a*v.get(at+1)+b*v.get(at+6)+c*v.get(at+11));double ax=v.get(at),ay=v.get(at+1),bx=v.get(at+5),by=v.get(at+6),cx=v.get(at+10),cy=v.get(at+11),den=(by-cy)*(ax-cx)+(cx-bx)*(ay-cy);a=((by-cy)*(x-cx)+(cx-bx)*(y-cy))/den;b=((cy-ay)*(x-cx)+(ax-cx)*(y-cy))/den;c=1-a-b;
+ float[] values=new float[3];for(int k=0;k<3;k++)values[k]=plane.base[k]+plane.dx[k]*(x-plane.x)+plane.dy[k]*(y-plane.y);double q=a*v.get(at+4)+b*v.get(at+9)+c*v.get(at+14);for(int k=0;k<2;k++){double expected=(a*v.get(at+2+k)+b*v.get(at+7+k)+c*v.get(at+12+k))/q,actual=values[k]/values[2];double error=Math.abs(actual-expected);max=Math.max(max,error);if(error>0.001*Math.max(1,Math.abs(expected)))throw new AssertionError("Plane mismatch "+error);}samples++;}
+ }}}}if(triangles==0)throw new AssertionError();System.out.println("PASS_TEXTURE_PLANES triangles="+triangles+" samples="+samples+" max_uv_error="+max);
+ }}

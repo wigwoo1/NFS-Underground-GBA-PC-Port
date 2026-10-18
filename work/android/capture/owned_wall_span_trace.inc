@@ -1,0 +1,11 @@
+/* Bounded original ARM span-entry trace; no geometry selection or repair. */
+static FILE*owned_wall_span_file;static unsigned owned_wall_span_first,owned_wall_span_last,owned_wall_span_count,owned_wall_span_failed;static char owned_wall_span_code_path[1200];
+NF_TEXT_HOST_EXPORT int nf_owned_wall_span_open(const char*path,unsigned first,unsigned last){if(owned_wall_span_file)fclose(owned_wall_span_file);owned_wall_span_file=NULL;owned_wall_span_count=owned_wall_span_failed=0;if(!path||first>last)return 0;if(snprintf(owned_wall_span_code_path,sizeof(owned_wall_span_code_path),"%s.code",path)>=(int)sizeof(owned_wall_span_code_path))return 0;owned_wall_span_first=first;owned_wall_span_last=last;owned_wall_span_file=fopen(path,"wb");if(owned_wall_span_file)nfsArmHook=onArm;return owned_wall_span_file!=NULL;}
+NF_TEXT_HOST_EXPORT void nf_owned_wall_span_close(uint32_t out[2]){if(owned_wall_span_file)fclose(owned_wall_span_file);owned_wall_span_file=NULL;if(out){out[0]=owned_wall_span_count;out[1]=owned_wall_span_failed;}}
+static void nf_owned_wall_span_observe(struct ARMCore*cpu,unsigned pc){
+ if(!owned_wall_span_file||(pc!=0x03005320&&pc!=0x030053e8))return;unsigned frame=c->frameCounter(c);if(frame<owned_wall_span_first||frame>owned_wall_span_last)return;
+ if(owned_wall_span_count>=131072){owned_wall_span_failed=1;return;}uint32_t row[45]={0x3153574e,1,180,(uint32_t)live_scene_epoch,(uint32_t)(live_scene_epoch>>32),live_scene.serial,live_scene.begin,frame,pc,cpu->gprs[0],0,0};for(unsigned i=0;i<16;i++)row[12+i]=cpu->gprs[i];if(!native_surface_read(NULL,cpu->gprs[0],row+28,68)){owned_wall_span_failed=1;return;}
+ uint8_t shade[4081];if(pc==0x03005320){int16_t offset;memcpy(&offset,(uint8_t*)(row+28)+42,2);row[10]=row[28+5]+(int32_t)offset;row[11]=sizeof(shade);row[2]+=sizeof(shade);if(!native_surface_read(NULL,row[10],shade,sizeof(shade))){owned_wall_span_failed=1;return;}}
+ if(!owned_wall_span_count){uint8_t code[512];if(!native_surface_read(NULL,0x03005300,code,sizeof(code))){owned_wall_span_failed=1;return;}FILE*f=fopen(owned_wall_span_code_path,"wb");if(!f||fwrite(code,1,sizeof(code),f)!=sizeof(code))owned_wall_span_failed=1;if(f)fclose(f);}
+ if(fwrite(row,1,sizeof(row),owned_wall_span_file)!=sizeof(row)||(row[11]&&fwrite(shade,1,row[11],owned_wall_span_file)!=row[11]))owned_wall_span_failed=1;owned_wall_span_count++;
+}

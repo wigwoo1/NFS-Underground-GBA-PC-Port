@@ -1,0 +1,26 @@
+static int nf_owned_compact_wall_event(const NFSceneEvent*,unsigned,unsigned);
+/* Separate original wall-command journal; never substitutes for road events. */
+static FILE*owned_wall_journal;static unsigned owned_wall_journal_end;
+NF_TEXT_HOST_EXPORT int nf_owned_wall_journal_open(const char*path,unsigned end){if(owned_wall_journal)fclose(owned_wall_journal);owned_wall_journal=path?fopen(path,"wb"):NULL;owned_wall_journal_end=end;return owned_wall_journal!=NULL;}
+NF_TEXT_HOST_EXPORT void nf_owned_wall_journal_close(void){if(owned_wall_journal)fclose(owned_wall_journal);owned_wall_journal=NULL;owned_wall_journal_end=0;}
+static FILE*owned_road_journal;
+NF_TEXT_HOST_EXPORT int nf_owned_road_journal_open(const char*path){if(owned_road_journal)fclose(owned_road_journal);owned_road_journal=path?fopen(path,"wb"):NULL;return owned_road_journal!=NULL;}
+NF_TEXT_HOST_EXPORT void nf_owned_road_journal_close(void){if(owned_road_journal)fclose(owned_road_journal);owned_road_journal=NULL;}
+/* Host-only staged trace. Two disjoint sentinels expose same-value writes too. */
+static unsigned owned_event_enabled,owned_event_failed,owned_event_count;
+static uint8_t owned_event_kind[0x18000],owned_event_probe_a[0x18000],owned_event_probe_b[0x18000];
+static uint32_t owned_event_refresh[0x18000];
+static struct{unsigned valid,refresh;uint8_t kind[0x18000];uint32_t written[0x18000];} owned_event_history[16];
+static int owned_event_texture_read(void*context,uint32_t address,void*out,size_t bytes){const NFSceneEvent*e=context;if(address<e->texture_address||(uint64_t)address-e->texture_address>e->texture_size||bytes>e->texture_size-(address-e->texture_address))return 0;memcpy(out,e->texture+address-e->texture_address,bytes);return 1;}
+static void nf_owned_event_audit(unsigned kind,void*scene,const void*opaque){
+ (void)scene;if(!owned_event_enabled||owned_event_failed)return;const NFSceneEvent*event=opaque;NFSceneEvent replay=*event;if(kind==1){replay.read=owned_event_texture_read;replay.context=&replay;}unsigned completed=0;
+ memset(owned_event_probe_a,0x55,sizeof(owned_event_probe_a));memset(owned_event_probe_b,0xaa,sizeof(owned_event_probe_b));
+ if(!nf_scene_execute(&replay,1,owned_event_probe_a,sizeof(owned_event_probe_a),&completed)||!nf_scene_execute(&replay,1,owned_event_probe_b,sizeof(owned_event_probe_b),&completed)){owned_event_failed=1;return;}
+ if(kind==1&&owned_road_journal){size_t commands=(size_t)event->count*17*4;uint64_t header[12]={0x314a524e,1,96+commands+event->texture_size,nf_native_scene_epoch(),owned_event_count+1,c->frameCounter(c),kind,event->count,event->shift,event->texture_address,event->texture_size,17};if(fwrite(header,96,1,owned_road_journal)!=1||fwrite(event->commands,1,commands,owned_road_journal)!=commands||fwrite(event->texture,1,event->texture_size,owned_road_journal)!=event->texture_size){owned_event_failed=1;return;}}
+ if(kind==2&&owned_wall_journal&&c->frameCounter(c)<=owned_wall_journal_end){size_t commands=(size_t)event->count*20*4;uint64_t header[12]={0x314a574e,1,96+commands+event->texture_size,nf_native_scene_epoch(),owned_event_count+1,c->frameCounter(c),kind,event->count,event->shift,event->texture_address,event->texture_size,20};if(fwrite(header,96,1,owned_wall_journal)!=1||fwrite(event->commands,1,commands,owned_wall_journal)!=commands||fwrite(event->texture,1,event->texture_size,owned_wall_journal)!=event->texture_size){owned_event_failed=1;return;}}
+ if(kind==2&&!nf_owned_compact_wall_event(event,owned_event_count+1,c->frameCounter(c))){owned_compact_wall_failed=1;owned_event_failed=1;return;}
+ unsigned refresh=c->frameCounter(c);for(unsigned i=0;i<0x18000;i++)if(owned_event_probe_a[i]!=0x55||owned_event_probe_b[i]!=0xaa){owned_event_kind[i]=(uint8_t)kind;owned_event_refresh[i]=refresh;}owned_event_count++;
+}
+static void nf_owned_event_audit_close(unsigned refresh){if(!owned_event_enabled||owned_event_failed)return;unsigned slot=refresh%16;owned_event_history[slot].valid=1;owned_event_history[slot].refresh=refresh;memcpy(owned_event_history[slot].kind,owned_event_kind,sizeof(owned_event_kind));memcpy(owned_event_history[slot].written,owned_event_refresh,sizeof(owned_event_refresh));}
+NF_TEXT_HOST_EXPORT int nf_owned_event_audit_enable(void){if(!c||native_background_capture_only||!native_plan_enabled)return 0;owned_event_enabled=1;owned_event_failed=owned_event_count=0;memset(owned_event_kind,0,sizeof(owned_event_kind));memset(owned_event_refresh,0,sizeof(owned_event_refresh));memset(owned_event_history,0,sizeof(owned_event_history));return 1;}
+NF_TEXT_HOST_EXPORT size_t nf_owned_event_audit_read(uint64_t epoch,unsigned refresh,unsigned page,void*out,size_t capacity,uint32_t meta[2]){if(meta){meta[0]=owned_event_count;meta[1]=owned_event_failed;}if(!c||!owned_event_enabled||owned_event_failed||epoch!=nf_native_scene_epoch()||epoch!=android_background_diagnostic_epoch||page>1)return 0;unsigned slot=refresh%16;if(!owned_event_history[slot].valid||owned_event_history[slot].refresh!=refresh)return 0;size_t bytes=38400*5;if(!out)return bytes;if(capacity<bytes)return 0;unsigned base=page*0xa000;memcpy(out,owned_event_history[slot].kind+base,38400);memcpy((uint8_t*)out+38400,owned_event_history[slot].written+base,38400*4);return bytes;}

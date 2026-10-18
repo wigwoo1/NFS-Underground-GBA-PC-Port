@@ -1,0 +1,5 @@
+package org.codex.nfsugpreview;
+import java.nio.*;
+public class RoadAssetTest{
+ public static void main(String[] args){byte[] raw=new byte[122];ByteBuffer b=ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN);int[] h={0x4552464e,1,7,0,2,1,0,0x08000000,2,120};for(int i=0;i<10;i++)b.putInt(i*4,h[i]);int[] s=new int[20];s[0]=s[10]=0x060000ee;s[1]=s[11]=1;s[2]=0x030056d8;s[9]=0x08000000;for(int i=0;i<20;i++)b.putInt(40+i*4,s[i]);raw[120]=19;raw[121]=37;NativeRoadAsset a=new NativeRoadAsset(raw);raw[120]=0;if(a.texture().get(0)!=19||a.span(0).getInt(0)!=0x060000ee||!a.texture().isReadOnly())throw new AssertionError("ownership");int rejected=0;for(int offset:new int[]{0,4,12,16,20,24,28,32,36,40,44,48,52,56,60,64,76,80,84}){byte[] bad=b.array().clone();ByteBuffer.wrap(bad).order(ByteOrder.LITTLE_ENDIAN).putInt(offset,-1);try{new NativeRoadAsset(bad);throw new AssertionError("Accepted "+offset);}catch(IllegalArgumentException expected){rejected++;}}System.out.println("PASS_ROAD_ASSET valid=1 malformed="+rejected);}
+}

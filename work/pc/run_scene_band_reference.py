@@ -1,0 +1,12 @@
+from pathlib import Path
+import hashlib,json,shutil,subprocess,os
+base=Path('C:/NFSUG-Workspace');previous=base/'NFSUG-pc-scene-sample-tests';out=base/'NFSUG-pc-scene-band-reference-tests';out.mkdir(exist_ok=True);sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+report=json.loads((previous/'scene-sample-test-report.json').read_text());source=previous/'scene-sample-real.py';assert sha(source)==report['test_sha256']
+for name in ['scene-sample.dll','timing-core.dll','live-build-report.json']:shutil.copyfile(previous/name,out/name)
+text=source.read_text().replace('NFSUG-pc-scene-sample-tests','NFSUG-pc-scene-band-reference-tests')
+marker='def sample_check(old,new,aa,bb,pair,pi):';assert text.count(marker)==1;text=text.replace(marker,Path(__file__).with_name('scene_band_reference_checks.py').read_text()+'\n'+marker)
+marker='target=(lo+hi)/2;p=sample_prepare(old,new,target,2,64*1024*1024,C.byref(reason));';assert text.count(marker)==1;text=text.replace(marker,'target=(lo+hi)/2;begin=bench_time.perf_counter();p=sample_prepare(old,new,target,2,64*1024*1024,C.byref(reason));plan_times.append((bench_time.perf_counter()-begin)*1000);')
+marker="assert info[3]==cursor and info[10]==new_only";assert text.count(marker)==1;text=text.replace(marker,'independent_band_check(old,new,aa,pair,bands,target,p,info)\n  '+marker)
+marker='finally:close(h)';assert text.count(marker)==1;text=text.replace(marker,' reset_composition_guards(h,held)\n'+marker)
+text+='\nassert reference_counts["natural_reset_epoch_guards"]==4 and reference_counts["missing_timing_pairs"]==1 and reference_counts["reference_renders"]>=8\nr=dict(result="PASS_INDEPENDENT_BAND_REFERENCE_AND_OPTIONAL_FAILURES",counts=dict(reference_counts),cases=reference_cases,retention_cases=retention_cases,plan_prepare_ms=dict(count=len(plan_times),median=float(np.median(plan_times)),p95=float(np.percentile(plan_times,95)),maximum=max(plan_times)),test_sha256=sha(Path(__file__)),dll_sha256=sha(out/"scene-sample.dll"),full_scene_60fps=False,live_interpolation=False,performance_scope="115 diagnostic plan constructions; not gameplay FPS or full-route GPU timing");(out/"scene-band-reference-report.json").write_text(json.dumps(r,indent=2));print(json.dumps(r,indent=2))\n'
+script=out/'scene-band-reference-real.py';script.write_text(text);r=subprocess.run([os.sys.executable,str(script)],capture_output=True,text=True);(out/'scene-band-reference.log').write_text(r.stdout+r.stderr);print(r.stdout[-4200:]+r.stderr,flush=True);r.check_returncode()

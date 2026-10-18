@@ -1,0 +1,12 @@
+package org.codex.nfsugpreview;
+import java.nio.*;import java.nio.file.*;import java.util.*;
+public class RoadBindingsTest{
+ static NativeRoadBindings.Candidate[] candidates(Path dir,int mode)throws Exception{
+  byte[] packed=Files.readAllBytes(dir.resolve("road-candidates.bin"));if(mode==1)packed[packed.length-1]^=1;ByteBuffer b=ByteBuffer.wrap(packed).order(ByteOrder.LITTLE_ENDIAN);int n=b.getInt();NativeRoadBindings.Candidate[] result=new NativeRoadBindings.Candidate[n];for(int i=0;i<n;i++){long epoch=b.getLong()+(mode==2?1:0),serial=Integer.toUnsignedLong(b.getInt()),begin=Integer.toUnsignedLong(b.getInt()),end=Integer.toUnsignedLong(b.getInt());int page=b.getInt();long[] identity=new long[5];for(int j=0;j<5;j++)identity[j]=Integer.toUnsignedLong(b.getInt());int size=b.getInt();if(size==0){int[] proof=new int[16];for(int j=0;j<16;j++)proof[j]=b.getInt();result[i]=NativeRoadBindings.verifiedEmpty(epoch,serial,begin,end,page,identity,proof);}else{byte[] bytes=new byte[size];b.get(bytes);result[i]=new NativeRoadBindings.Candidate(epoch,serial,begin,end,page,identity,bytes);}}if(b.hasRemaining())throw new AssertionError("Trailing candidates");return result;
+ }
+ public static void main(String[] args)throws Exception{Path dir=Paths.get(args[0]);NativeRoadBindings.Candidate[] candidates=candidates(dir,0);int bound=0,rejected=0;
+ for(String kind:new String[]{"whole","split"}){NativeSceneSnapshot scene=new NativeBackgroundScene(Files.readAllBytes(dir.resolve("race-background-"+kind+".nrb"))).sky.scene;NativeRoadBindings bindings=new NativeRoadBindings(scene,candidates);if(bindings.count()!=(kind.equals("whole")?2:4)||!bindings.belongsTo(scene))throw new AssertionError("Binding count");for(int i=0;i<bindings.count();i++){NativeRoadBindings.Binding item=bindings.binding(i);if(item.top<0||item.bottom>160||item.command<0)throw new AssertionError("Owner clip");bound++;}try{new NativeRoadBindings(scene,new NativeRoadBindings.Candidate[0]);throw new AssertionError("Missing accepted");}catch(IllegalArgumentException expected){rejected++;}}
+ NativeSceneSnapshot split=new NativeBackgroundScene(Files.readAllBytes(dir.resolve("race-background-split.nrb"))).sky.scene;for(int mode:new int[]{1,2}){try{new NativeRoadBindings(split,candidates(dir,mode));throw new AssertionError("Conflicting/stale accepted");}catch(IllegalArgumentException expected){rejected++;}}
+ System.out.println("PASS_ROAD_BINDINGS bound="+bound+" invalid_rejected="+rejected);
+ }
+}

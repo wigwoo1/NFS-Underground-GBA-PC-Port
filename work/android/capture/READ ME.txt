@@ -1,0 +1,35 @@
+Android borrowed-core native capture component - 2026-10-15
+
+This diagnostic attaches the existing scene observer to the SAME mGBA core
+owned by the Android boundary. It does not initialize a second simulation.
+Staging leaves the authoritative PC probe/camera and public Android sources
+unchanged. The observer aliases the existing framebuffer. Detach restores
+original memory-store/scanline callbacks, clears tracing and frees packets;
+the Android owner remains responsible for destroying its core.
+
+stage_capture.py makes hash-recorded local copies and applies audited
+attachment/lifecycle adapters. build_capture.py builds Windows-equivalent
+and Android API26 ARM64/x86_64 libraries/native diagnostics, verifies ELF
+targets/16-KiB LOAD alignment and checks that historical speed/init controls
+are absent from Android dynamic exports.
+
+test_capture_host.py checks 600 original frame hashes, exact original
+clock/counters/audio, 148 captured packets against the preserved PC reference,
+pause, state-load epoch invalidation, detach and close/reopen.
+run_capture_android.py runs capture OFF and ON on owned NFSUG_API30
+emulator-5556, with copied/hash-verified ROM and checkpoint in emulator scratch.
+Both actual Android cases match all 600 original frame hashes and audio.
+All 148 captured packets also match the preserved PC reference through the
+verified host capture report. Diagnostics are unpaced offline stepping, not
+real-time gameplay/frame-rate tests. ARM64 runtime remains unverified.
+
+No JNI/UI renderer integration is enabled in the public APK.
+Closed geometry packets do not by themselves provide paired sky/HUD/indexed
+coverage/visibility ownership. Reuse and verify the existing associated
+capture streams before full-scene GLES rendering and cadence claims.
+The separate player-transform/source-time interpolation issue is unchanged.
+No captured ROM/state/raw-frame payloads are bundled in component artifacts.
+
+Build inputs: existing official NDK/Ninja/CMake, the existing Android core
+archives/source cache, current work/probe.c and shared camera source tree.
+Local scratch: C:\NFSUG-Workspace\NFSUG-android-capture-local.

@@ -1,0 +1,9 @@
+"""Cross-check native-replay coverage attribution against actual historical VRAM."""
+from pathlib import Path
+import collections,json,struct
+base=Path('C:/NFSUG-Workspace');folder=base/'NFSUG-restored-composition-fixtures';out=base/'NFSUG-android-local/app-restored-composition-gpu-tests';capture=json.loads((folder/'source-fixture-capture-report.json').read_text());diagnostic=json.loads((out/'restored-coverage-source-diagnostic.json').read_text());points=[];groups=collections.Counter()
+for original in diagnostic['source_points']:
+ p=dict(original);entry=capture['fixtures'][str(p['display_refresh'])];raw=(folder/entry['filename']).read_bytes();h=struct.unpack_from('<16Q',raw);sky=raw[h[8]:h[8]+h[9]];sh=struct.unpack_from('<16Q',sky);nab=sky[sh[8]:sh[8]+sh[9]];nh=struct.unpack_from('<16Q',nab);layer=nab[nh[12]:nh[12]+nh[13]];owner=next(o for o in entry['owners'] if o['serial']==p['owner_serial']);offset=owner['page']*0xa000+p['y']*240+p['x'];part,within=divmod(offset,4096);ref=struct.unpack_from('<H',layer,20512+(p['y']*25+part)*2)[0];actual=layer[28512+ref*4096+within];p['original_hardware_index']=actual;p['native_replay_matches_hardware']=actual==p['source_index'];points.append(p);groups[(p['display_refresh'],p['native_replay_matches_hardware'])]+=1
+report=dict(result='ORIGINAL_HARDWARE_VS_NATIVE_WALL_AUDIT',observations=len(points),matched=sum(p['native_replay_matches_hardware'] for p in points),mismatched=sum(not p['native_replay_matches_hardware'] for p in points),groups=[dict(refresh=k[0],matches=k[1],count=v) for k,v in groups.items()],source_points=points,requires_original_span_trace=True)
+assert report['matched']==16 and report['mismatched']==72
+(out/'original-hardware-wall-audit.json').write_text(json.dumps(report,indent=2));print('CONFIRMED hardware audit:16 reconstructed samples match;72 differ; actual ARM span trace required')

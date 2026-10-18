@@ -1,0 +1,2 @@
+from pathlib import Path
+p=Path('work/camera/hud_row_pool_test.c');s=p.read_text();needle='CHECK(worst&&worst->count==160);';s=s.replace(needle,needle+'_putenv("NF_TEST_HUD_POOL_PREVIOUS_HINT=1");NFHudRowPool*worst_hint=nf_hud_pool_create(data,n,9);CHECK(worst_hint&&worst_hint->bytes==worst->bytes&&!memcmp(worst_hint,worst,worst->bytes));free(worst_hint);_putenv("NF_TEST_HUD_POOL_PREVIOUS_HINT=");',1);p.write_text(s)

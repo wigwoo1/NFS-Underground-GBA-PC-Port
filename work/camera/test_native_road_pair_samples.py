@@ -1,0 +1,7 @@
+from pathlib import Path
+import ctypes as C,json,sys
+p=Path('work/camera');native=C.CDLL(str((p/'road-pair-samples.dll').resolve())).nf_road_pair_samples;native.argtypes=[C.c_void_p,C.c_uint,C.c_void_p,C.c_void_p,C.c_void_p];verified=0
+s=(p/'sample_original_write_order_oracle.py').read_text();begin=s.index('# Independent diagnostic oracle.');end=s.index("for road,g in zip(r['checks'],geo['roads']):",begin);s=s[:begin]+s[end:];s=s.replace('stable-road-owned-continuous-clipped-rings.json','world-source-clipped-rings.json');s=s.replace('stable-road-original-write-order-oracle-','native-road-pair-samples-pixels-')
+s=s.replace(' fixture=(p/'," samples=(C.c_int32*(38400*4))();assert native((C.c_double*(len(ring)*6))(*(v for row in ring for v in row)),len(ring),(C.c_uint16*4)(*road['bounds']),table,samples);assert {i:(samples[i*4],samples[i*4+1]) for i in range(38400) if samples[i*4]>=0}==write_ledger\n fixture=(p/")
+s=s.replace('  uv=[fixed[k]/',"  assert list(samples[dest*4:dest*4+4])==[int(sy),int(x),*fixed];verified+=1\n  uv=[samples[dest*4+2+k]/")
+sys.argv=['samples','1'];exec(compile(s,'native_samples_differential','exec'),globals());report=dict(result='PASS',exact_source_and_uv_samples=verified,complete_destination_coverage_exact=True,all_original_indices_exact=True,scope='World-derived integer endpoint CPU integration; GPU and fractional motion pending.');(p/'native-road-pair-samples-tests.json').write_text(json.dumps(report,indent=2));print(report)

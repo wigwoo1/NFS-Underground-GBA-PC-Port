@@ -1,0 +1,9 @@
+from pathlib import Path
+import os,json,subprocess,hashlib
+here=Path(__file__).resolve().parent;base=Path(r'C:\NFSUG-Workspace');baseline=base/'NFSUG-pc-scene-tests';out=base/'NFSUG-pc-sky-gpu-tests';out.mkdir(exist_ok=True)
+def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
+receipt=json.loads((baseline/'scene-build-report.json').read_text())
+for name,digest in receipt['source_sha256'].items():assert sha(here/name)==digest,name
+text=(here/'scene_gpu.c').read_text(encoding='utf-8');needle='GLuint input,palette,target,fbo,program,background,retention,hud,hudcopy;';assert text.count(needle)==1;text=text.replace(needle,needle+'GLuint sky_program,sky_upper;',1);needle='if(g->hud&&g->delete_program)';assert text.count(needle)==1;text=text.replace(needle,'if(g->sky_program&&g->delete_program)g->delete_program(g->sky_program);if(g->sky_upper)glDeleteTextures(1,&g->sky_upper);'+needle,1);text+='\n#include "sky_gpu.inc"\n';staged=out/'scene_gpu_sky.c';staged.write_text(text,encoding='utf-8')
+args=[arg.replace(str(here/'scene_gpu.c'),str(staged)).replace(str(baseline/'source-scene.dll'),str(out/'source-sky-gpu.dll')) for arg in receipt['command']];args.insert(1,'-I'+str(here));env=dict(os.environ);env['PATH']='C:/msys64/mingw64/bin;'+env.get('PATH','');subprocess.run(args,env=env,check=True)
+r=dict(result='BUILT_ISOLATED_SHARED_SCENE_SKY_GPU_TESTS_PENDING',command=args,dll_sha256=sha(out/'source-sky-gpu.dll'),baseline_receipt_sha256=sha(baseline/'scene-build-report.json'),baseline_gpu_source_sha256=sha(here/'scene_gpu.c'),staged_gpu_source_sha256=sha(staged),extension_sha256={name:sha(here/name) for name in ['sky_gpu.h','sky_gpu.inc']},script_sha256=sha(Path(__file__)),baseline_source_sha256=receipt['source_sha256'],shipping_packages_changed=False,full_scene_60fps=False);(out/'sky-gpu-build-report.json').write_text(json.dumps(r,indent=2));print(json.dumps({k:v for k,v in r.items() if k not in ['command','baseline_source_sha256']},indent=2))
